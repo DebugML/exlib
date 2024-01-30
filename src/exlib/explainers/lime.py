@@ -5,7 +5,7 @@ import math
 import numpy as np
 from lime import lime_image, lime_text, lime_base
 from .common import *
-from .libs.lime.lime_text import LimeTextExplainer
+# from .libs.lime.lime_text import LimeTextExplainer
 
 
 def lime_cls_closure(model, collapse):
