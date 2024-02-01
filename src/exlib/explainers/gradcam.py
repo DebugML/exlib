@@ -52,7 +52,7 @@ class GradCAMImageCls(FeatureAttrMethod):
                                                 targets=[target_func(label[i:i+1])])
                 grad_cam_result = torch.tensor(grad_cam_result)
                 grad_cam_results.append(grad_cam_result)
-        grad_cam_results = torch.cat(grad_cam_results)
+        grad_cam_results = torch.stack(grad_cam_results)
 
         return FeatureAttrOutput(grad_cam_results, grad_cam_result)
     
