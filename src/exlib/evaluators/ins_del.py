@@ -120,7 +120,7 @@ class InsDelCls(Evaluator):
         else:
             return auc_score
     
-    def plot(self, img_tensor, scores, save_to=None):
+    def plot(self, img_tensor, explanation, scores, save_to=None):
         n_steps = scores.shape[-1] - 1
         i = n_steps
         if self.mode == 'del':
@@ -135,6 +135,7 @@ class InsDelCls(Evaluator):
                                                 scores[i]))
         plt.axis('off')
         plt.imshow(img_tensor.cpu().numpy().transpose(1, 2, 0))
+        plt.imshow(explanation.cpu().numpy(), alpha=0.5, cmap='hot')
 
         plt.subplot(122)
         plt.plot(np.arange(i+1) / n_steps, scores[:i+1].cpu().numpy())
@@ -215,12 +216,12 @@ class GroupedInsDelCls(InsDelCls):
         # if len(arr.shape) == 2:
         return (arr.sum(-1) - arr[:, 0] / 2 - arr[:, -1] / 2) / (arr.shape[1] - 1)
 
-    def forward(self, X, Z, group_mask, kwargs={}, return_dict=False):
+    def forward(self, X, Z, masks_scores_all=None, kwargs={}, return_dict=False):
         """Run metric on one image-saliency pair.
             Args:
                 X = img_tensor (Tensor): normalized image tensor. (bsz, n_channel, img_dim1, img_dim2)
-                Z = explanation (Tensor): saliency map. (bsz, 1, img_dim1, img_dim2)
-                sem_part: (bsz, 1, img_dim1, img_dim2)
+                Z = masks, (list of Tensor): saliency map. bsz list of (num_masks, img_dim1, img_dim2)
+                masks_scores_all: list of Tensor: bsz list of (num_masks)
                 verbose (int): in [0, 1, 2].
                     0 - return list of scores.
                     1 - also plot final step.
@@ -229,18 +230,23 @@ class GroupedInsDelCls(InsDelCls):
             Return:
                 scores (Tensor): Array containing scores at every step.
         """
+        # assert group_mask is not None or (masks_all is not None and masks_scores_all is not None)
+        
         self.model.eval()
         auc_score_all = []
         scores_all = []
         starts = []
         finishes = []
         step_sizes_all = []
+        used_masks_all = []
         for b_i in range(X.size(0)):
-            group_mask_bool = convert_idx_masks_to_bool(group_mask[b_i:b_i+1])
+            group_mask_bool = Z[b_i]
+                
+            # import pdb; pdb.set_trace()
             num_masks = group_mask_bool.size(0)
 
-            img_tensor = X[b_i:b_i+1]
-            explanation = Z[b_i:b_i+1].to(img_tensor.device)
+            img_tensor = X[b_i].unsqueeze(0)
+            # explanation = Z[b_i:b_i+1].to(img_tensor.device)
 
             bsz, n_channel, img_dim1, img_dim2 = img_tensor.shape
             HW = img_dim1 * img_dim2
@@ -263,17 +269,27 @@ class GroupedInsDelCls(InsDelCls):
             # start[start > 1] = 1.0
             # finish[finish < -1] = 
             # finish[finish > 1] = 1.0
-
-            t_r_masks = (explanation * group_mask_bool.unsqueeze(1).float()).reshape(num_masks, 
-                                                                                -1).mean(-1)
+            # import pdb; pdb.set_trace()
+            t_r_masks = masks_scores_all[b_i]
             salient_order_masks = torch.argsort(t_r_masks, dim=-1).flip(-1)
 
             n_steps = len(salient_order_masks)
 
-            scores = torch.empty(bsz, n_steps + 1).cuda()
+            scores = torch.zeros(bsz, n_steps + 1).cuda()
+            # scores = []
             step_sizes = [0]
             # Coordinates of pixels in order of decreasing saliency
-            for i in range(n_steps+1):
+            used_masks = torch.zeros(img_dim1, img_dim2).to(X.device)
+            for i in tqdm(range(n_steps)):
+                # if i < n_steps:
+                mask_best = group_mask_bool[salient_order_masks[i]]
+                mask_best_new = (mask_best - (used_masks > 0).int()) == 1
+                new_count = mask_best_new.sum().item()
+                # if nothing is added, then skip to next iteration
+                step_sizes.append(new_count)
+                if new_count == 0:
+                    continue
+
                 with torch.no_grad():
                     pred_mod = self.model(start, **kwargs_i)
                     if self.postprocess is not None:
@@ -281,15 +297,17 @@ class GroupedInsDelCls(InsDelCls):
 
                 pred_mod = torch.softmax(pred_mod, dim=-1)
                 scores[:,i] = pred_mod[range(bsz), c]
+                # scores.append(pred_mod[range(bsz), c])
+
+                # import pdb; pdb.set_trace()
+                start[0,:,mask_best_new] = finish[0,:,mask_best_new]
                 
-                if i < n_steps:
-                    mask_sem_best = group_mask_bool[salient_order_masks[i]]
-                    start[0,:,mask_sem_best] = finish[0,:,mask_sem_best]
-                    step_sizes.append(mask_sem_best.sum().item())
+                used_masks = used_masks + mask_best_new * (i + 1) #len(step_sizes)
                 # import pdb; pdb.set_trace()
 
             # import pdb; pdb.set_trace()
             step_sizes = torch.tensor(step_sizes).to(scores.device)
+            # import pdb; pdb.set_trace()
             auc_score = self.auc(scores, step_sizes)
             
             auc_score_all.append(auc_score)
@@ -297,6 +315,7 @@ class GroupedInsDelCls(InsDelCls):
             starts.append(start_clone)
             finishes.append(finish)
             step_sizes_all.append(step_sizes)
+            used_masks_all.append(used_masks)
         
         if return_dict:
             return {
@@ -304,7 +323,8 @@ class GroupedInsDelCls(InsDelCls):
                 'scores': scores_all,
                 'start': torch.stack(starts),
                 'finish': torch.stack(finishes),
-                'step_sizes': step_sizes_all
+                'step_sizes': step_sizes_all,
+                'used_masks': torch.stack(used_masks_all)
             }
         else:
             return torch.stack(auc_score_all)
@@ -325,7 +345,8 @@ class GroupedInsDelCls(InsDelCls):
                                                 scores[i]))
         plt.axis('off')
         plt.imshow(img_tensor.cpu().numpy().transpose(1, 2, 0))
-        plt.imshow(explanation.cpu().numpy().transpose(1, 2, 0), alpha=0.5, cmap='jet')
+        plt.imshow(1 - explanation.cpu().numpy(), alpha=0.5, cmap='hot')
+        # plt.imshow(explanation.cpu().numpy().transpose(1, 2, 0), alpha=0.5, cmap='jet')
 
         plt.subplot(122)
         plt.plot(step_sizes_cum_sum_frac.cpu().numpy(), scores.cpu().numpy())

@@ -44,7 +44,22 @@ def convert_idx_masks_to_bool(masks):
     return masks_bool
 
 
-def get_mask_transform(num_masks_max=200, processor=None):
+def convert_idx_masks_to_bool_big_first(masks):
+    """
+    input: masks (1, img_dim1, img_dim2)
+    output: masks_bool (num_masks, img_dim1, img_dim2)
+    """
+    unique_idxs, counts = torch.unique(masks, return_counts=True)
+    unique_idxs_sorted = unique_idxs[counts.argsort(descending=True)]
+    idxs = unique_idxs_sorted.view(-1, 1, 1)
+    broadcasted_masks = masks.expand(unique_idxs.shape[0], 
+                                     masks.shape[1], 
+                                     masks.shape[2])
+    masks_bool = (broadcasted_masks == idxs)
+    return masks_bool
+
+
+def get_mask_transform(num_masks_max=200, processor=None, big_first=False):
     def mask_transform(mask):
         seg_mask_cut_off = num_masks_max
         # Preprocess the mask using the ViTImageProcessor
@@ -66,7 +81,10 @@ def get_mask_transform(num_masks_max=200, processor=None):
             if mask.dtype != torch.bool:
                 if len(mask.shape) == 2:
                     mask = mask.unsqueeze(0)
-                mask = convert_idx_masks_to_bool(mask)
+                if big_first:
+                    mask = convert_idx_masks_to_bool_big_first(mask)
+                else:
+                    mask = convert_idx_masks_to_bool(mask)
             bsz, mask_dim1, mask_dim2 = mask.shape
             mask = mask.unsqueeze(1).expand(bsz, 
                                             3, 
@@ -111,7 +129,12 @@ def compress_single_masks(masks, masks_weights, min_size):
     sorted_weights, sorted_indices = torch.sort(masks_weights, descending=True)
     sorted_indices = sorted_indices[sorted_weights > 0]
 
-    masks_bool = masks_bool[sorted_indices]  # sorted masks
+    
+    try:
+        masks_bool = masks_bool[sorted_indices]  # sorted masks
+    except:
+        import pdb; pdb.set_trace()
+        masks_bool = masks_bool[sorted_indices]  # sorted masks
     
     masks = torch.zeros(*masks_bool.shape[1:]).to(masks.device)
     count = 1
@@ -286,20 +309,117 @@ class Sparsemax(nn.Module):
         self.grad_input = nonzeros * (grad_output - sum.expand_as(grad_output))
 
         return self.grad_input
-    
+
+
+def same_tensor(tensor, *args):
+    ''' Do the input tensors all point to the same underlying data '''
+    for other in args:
+        if not torch.is_tensor(other):
+            return False
+
+        if tensor.device != other.device:
+            return False
+
+        if tensor.dtype != other.dtype:
+            return False
+
+        if tensor.data_ptr() != other.data_ptr():
+            return False
+
+    return True
+
+
+class SparseMultiHeadedAttention(nn.Module):
+    ''' Implement a multi-headed attention module '''
+    def __init__(self, embed_dim, num_heads=1, scale=1):
+        ''' Initialize the attention module '''
+        super(SparseMultiHeadedAttention, self).__init__()
+
+        # ensure valid inputs
+        assert embed_dim % num_heads == 0, \
+            f'num_heads={num_heads} should evenly divide embed_dim={embed_dim}'
+
+        # store off the scale and input params
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.projection_dim = embed_dim // num_heads
+        self.scale = scale
+        # self.scale = self.projection_dim ** -0.5
+
+        # Combine projections for multiple heads into a single linear layer for efficiency
+        self.input_weights = nn.Parameter(torch.Tensor(3 * embed_dim, embed_dim))
+        self.output_projection = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.sparsemax = Sparsemax(dim=-1)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        ''' Reset parameters using xavier initialization '''
+        # Initialize using Xavier
+        gain = nn.init.calculate_gain('linear')
+        nn.init.xavier_uniform_(self.input_weights, gain)
+        nn.init.xavier_uniform_(self.output_projection.weight, gain)
+
+    def project(self, inputs, index=0, chunks=1):
+        ''' Produce a linear projection using the weights '''
+        batch_size = inputs.shape[0]
+        start = index * self.embed_dim
+        end = start + chunks * self.embed_dim
+        # import pdb; pdb.set_trace()
+        projections = F.linear(inputs, self.input_weights[start:end]).chunk(chunks, dim=-1)
+
+        output_projections = []
+        for projection in projections:
+            # transform projection to (BH x T x E)
+            output_projections.append(
+                projection.view(
+                    batch_size,
+                    -1,
+                    self.num_heads,
+                    self.projection_dim
+                ).transpose(2, 1).contiguous().view(
+                    batch_size * self.num_heads,
+                    -1,
+                    self.projection_dim
+                )
+            )
+
+        return output_projections
+
+    def attention(self, queries, keys, values):
+        ''' Scaled dot product attention with optional masks '''
+        logits = self.scale * torch.bmm(queries, keys.transpose(2, 1))
+
+        # attended = torch.bmm(F.softmax(logits, dim=-1), values)
+        attn_weights = self.sparsemax(logits)
+        return attn_weights
+
+    def forward(self, queries, keys, values):
+        ''' Forward pass of the attention '''
+        # pylint:disable=unbalanced-tuple-unpacking
+        if same_tensor(values, keys, queries):
+            values, keys, queries = self.project(values, chunks=3)
+        elif same_tensor(values, keys):
+            values, keys = self.project(values, chunks=2)
+            queries, = self.project(queries, 2)
+        else:
+            values, = self.project(values, 0)
+            keys, = self.project(keys, 1)
+            queries, = self.project(queries, 2)
+
+        attn_weights = self.attention(queries, keys, values)
+        return attn_weights
+
 
 class GroupGenerateLayer(nn.Module):
-    def __init__(self, hidden_dim, num_heads):
+    def __init__(self, hidden_dim, num_heads, scale=1):
         super().__init__()
         
         self.hidden_dim = hidden_dim
         self.num_heads = num_heads
+        self.scale = scale
        
-        self.multihead_attns = nn.ModuleList([nn.MultiheadAttention(hidden_dim, 
-                                                                   1, 
-                                                                   batch_first=True) \
+        self.multihead_attns = nn.ModuleList([SparseMultiHeadedAttention(hidden_dim, scale=scale) \
                                                 for _ in range(num_heads)])
-        self.sparsemax = Sparsemax(dim=-1)
 
     def forward(self, query, key_value, epoch=0):
         """
@@ -310,15 +430,13 @@ class GroupGenerateLayer(nn.Module):
             Output: attn_outputs (bsz, num_heads * seq_len, seq_len, hidden_dim)
                     mask (bsz, num_heads, seq_len, seq_len)
         """
-        epsilon = 1e-30
 
         if epoch == -1:
             epoch = self.num_heads
         
         head_i = epoch % self.num_heads
         if self.training:
-            _, attn_weights = self.multihead_attns[head_i](query, key_value, key_value, 
-                                                          average_attn_weights=False)
+            attn_weights = self.multihead_attns[head_i](query, key_value, key_value)
         else:
             attn_weights = []
             if epoch < self.num_heads:
@@ -326,24 +444,19 @@ class GroupGenerateLayer(nn.Module):
             else:
                 num_heads_use = self.num_heads
             for head_j in range(num_heads_use):
-                _, attn_weights_j = self.multihead_attns[head_j](query, key_value, key_value)
+                attn_weights_j = self.multihead_attns[head_j](query, key_value, key_value)
                 attn_weights.append(attn_weights_j)
             attn_weights = torch.stack(attn_weights, dim=1)
-        
-        attn_weights = attn_weights + epsilon
-        mask = self.sparsemax(torch.log(attn_weights))
-            
-        return mask
+        return attn_weights
 
 
 class GroupSelectLayer(nn.Module):
-    def __init__(self, hidden_dim):
+    def __init__(self, hidden_dim, scale=1):
         super().__init__()
         
         self.hidden_dim = hidden_dim
-        self.multihead_attn = nn.MultiheadAttention(hidden_dim, 1, 
-                                                    batch_first=True)
-        self.sparsemax = Sparsemax(dim=-1)
+        self.multihead_attn = SparseMultiHeadedAttention(hidden_dim, scale=scale)
+        self.scale = scale
 
     def forward(self, query, key, value):
         """
@@ -360,10 +473,8 @@ class GroupSelectLayer(nn.Module):
         bsz, seq_len, hidden_dim = query.shape
 
         # Obtain attention weights
-        _, attn_weights = self.multihead_attn(query, key, key)
-        attn_weights = attn_weights + epsilon  # (batch_size, num_heads, sequence_length, hidden_dim)
-        mask = self.sparsemax(torch.log(attn_weights))
-        mask = mask.transpose(-1, -2)
+        attn_weights = self.multihead_attn(query, key, key)
+        mask = attn_weights.transpose(-1, -2)
 
         # Apply attention weights on what to be attended
         new_shape = list(mask.shape) + [1] * (len(value.shape) - 3)
@@ -386,6 +497,8 @@ class SOPConfig:
                  num_channels: int = None,
                  attn_patch_size: int = None,
                  finetune_layers=None,
+                 group_gen_scale: int = None,
+                 group_sel_scale: int = None,
                 ):
         # all the config from the json file will be in self.__dict__
         super().__init__()
@@ -401,6 +514,8 @@ class SOPConfig:
         self.num_channels = 3
         self.attn_patch_size = 16
         self.finetune_layers=[]
+        self.group_gen_scale = 1
+        self.group_sel_scale = 1
 
         # first load the config from json file if specified
         if json_file is not None:
@@ -427,6 +542,10 @@ class SOPConfig:
             self.attn_patch_size = attn_patch_size
         if finetune_layers is not None:
             self.finetune_layers = finetune_layers
+        if group_gen_scale is not None:
+            self.group_gen_scale = group_gen_scale
+        if group_sel_scale is not None:
+            self.group_sel_scale = group_sel_scale
 
         
     def update_from_json(self, json_file):
@@ -445,7 +564,9 @@ class SOPConfig:
             'image_size',
             'num_channels',
             'attn_patch_size',
-            'finetune_layers'
+            'finetune_layers',
+            'group_gen_scale',
+            'group_sel_scale'
         ]
         to_save = {k: v for k, v in self.__dict__.items() if k in attrs_save}
         with open(json_file, 'w') as f:
@@ -469,6 +590,8 @@ class SOP(nn.Module):
         self.num_masks_sample = config.num_masks_sample
         self.num_masks_max = config.num_masks_max
         self.finetune_layers = config.finetune_layers
+        self.group_gen_scale = config.group_gen_scale if hasattr(config, 'group_gen_scale') else 1
+        self.group_sel_scale = config.group_sel_scale if hasattr(config, 'group_sel_scale') else 1
 
         # blackbox model and finetune layers
         self.blackbox_model = backbone_model
@@ -477,18 +600,20 @@ class SOP(nn.Module):
                 class_weights = get_chained_attr(backbone_model, config.finetune_layers[0]).weight
             except:
                 raise ValueError('class_weights is None and cannot be inferred from backbone_model')
-        try:
-            self.class_weights = copy.deepcopy(class_weights)  # maybe can do this outside
-            print('deep copy class weights')
-        except:
-            self.class_weights = class_weights.clone()
-            print('shallow copy class weights')
+        # try:
+        #     self.class_weights = copy.deepcopy(class_weights)  # maybe can do this outside
+        #     print('deep copy class weights')
+        # except:
+        self.class_weights = nn.Parameter(class_weights.clone())
+            # print('shallow copy class weights')
         
         
         self.input_attn = GroupGenerateLayer(hidden_dim=self.hidden_size,
-                                             num_heads=self.num_heads)
+                                             num_heads=self.num_heads,
+                                             scale=self.group_gen_scale)
         # output
-        self.output_attn = GroupSelectLayer(hidden_dim=self.hidden_size)
+        self.output_attn = GroupSelectLayer(hidden_dim=self.hidden_size,
+                                            scale=self.group_sel_scale)
 
     def init_grads(self):
         # Initialize the weights of the model
@@ -572,7 +697,8 @@ class SOPImage(SOP):
                 epoch=-1, 
                 mask_batch_size=16,
                 label=None,
-                return_tuple=False):
+                return_tuple=False,
+                binary_threshold=-1):
         if epoch == -1:
             epoch = self.num_heads
         bsz, num_channel, img_dim1, img_dim2 = inputs.shape
@@ -582,6 +708,10 @@ class SOPImage(SOP):
             grouped_inputs, input_mask_weights = self.group_generate(inputs, epoch, mask_batch_size, segs)
         else:
             grouped_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2) # directly apply mask
+
+        if binary_threshold != -1 and not self.training: # if binary threshold is set, then use binary mask above the threshold only for testing
+            input_mask_weights = (input_mask_weights > binary_threshold).float()
+            grouped_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2)
         
         # Backbone model
         logits, pooler_outputs = self.run_backbone(grouped_inputs, mask_batch_size)
@@ -709,15 +839,16 @@ class SOPImageCls(SOPImage):
         else:
             _, predicted = torch.max(weighted_logits.data, -1)
         
-        masks_mult = input_mask_weights.unsqueeze(2) * \
-        output_mask_weights.unsqueeze(-1).unsqueeze(-1) # bsz, n_masks, n_cls, img_dim, img_dim
+        grouped_attributions = output_mask_weights * logits # instead of just output_mask_weights
+        # import pdb; pdb.set_trace()
+        masks_mult_pred = input_mask_weights * grouped_attributions[range(len(predicted)),:,predicted,None,None]
+        masks_aggr_pred_cls = masks_mult_pred.sum(1)[:,None,:,:]
+        max_mask_indices = grouped_attributions.max(2).values.max(1).indices
+        # import pdb; pdb.set_trace()
+        masks_max_pred_cls = masks_mult_pred[range(bsz),max_mask_indices]
+
+        flat_masks = compress_masks_image(input_mask_weights, grouped_attributions[:,:,predicted])
         
-        masks_aggr = masks_mult.sum(1) # bsz, n_cls, img_dim, img_dim OR bsz, n_cls, seq_len
-        masks_aggr_pred_cls = masks_aggr[range(bsz), predicted].unsqueeze(1)
-        max_mask_indices = output_mask_weights.max(2).values.max(1).indices
-        masks_max_pred_cls = masks_mult[range(bsz),max_mask_indices,predicted].unsqueeze(1)
-        flat_masks = compress_masks_image(input_mask_weights, output_mask_weights)
-        grouped_attributions = output_mask_weights * logits
         return AttributionOutputSOP(weighted_logits,
                                     logits,
                                     pooler_outputs,
@@ -755,10 +886,11 @@ class SOPImageSeg(SOPImage):
         masks_aggr_pred_cls = None
         masks_max_pred_cls = None
         flat_masks = None
+        grouped_attributions = None
 
         # import pdb
         # pdb.set_trace()
-        # _, predicted = torch.max(weighted_output.data, -1)
+        _, predicted = torch.max(weighted_logits.data, -1)
         masks_mult = input_mask_weights.unsqueeze(2) * output_mask_weights.unsqueeze(-1).unsqueeze(-1) # bsz, n_masks, n_cls, img_dim, img_dim
         masks_aggr = masks_mult.sum(1) # bsz, n_cls, img_dim, img_dim OR bsz, n_cls, seq_len
         # masks_aggr_pred_cls = masks_aggr
@@ -769,9 +901,9 @@ class SOPImageSeg(SOPImage):
         # TODO: this has some problems ^
         # import pdb
         # pdb.set_trace()
-        grouped_attributions = output_mask_weights * logits
+        # grouped_attributions = output_mask_weights * logits
         
-        flat_masks = compress_masks_image(input_mask_weights, output_mask_weights)
+        # flat_masks = compress_masks_image(input_mask_weights, output_mask_weights[:,:,predicted])
 
         return AttributionOutputSOP(weighted_logits,
                                     logits,
@@ -817,6 +949,7 @@ class SOPText(SOP):
                 label=None,
                 return_tuple=False,
                 kwargs={}):
+        # import pdb; pdb.set_trace()
         if epoch == -1:
             epoch = self.num_heads
         bsz, seq_len = inputs.shape
@@ -879,7 +1012,7 @@ class SOPText(SOP):
             projected_inputs = projected_inputs * self.projected_input_scale
 
             if self.num_masks_max != -1:
-                input_dropout_idxs = torch.randperm(projected_inputs.shape[1])
+                input_dropout_idxs = torch.randperm(projected_inputs.shape[1]).to(inputs.device)
                 if 'attention_mask' in kwargs:
                     attention_mask_mult = kwargs['attention_mask'] * input_dropout_idxs
                 else:
@@ -937,7 +1070,8 @@ class SOPText(SOP):
         input_mask_weights = input_mask_weights.reshape(bsz, -1, seq_len)
         
         # Always add the second part of the sequence (in question answering, it would be the qa pair)
-        input_mask_weights = input_mask_weights  + kwargs['token_type_ids'].unsqueeze(1)
+        if 'token_type_ids' in kwargs:
+            input_mask_weights = input_mask_weights  + kwargs['token_type_ids'].unsqueeze(1)
         
         masked_inputs_embeds = projected_inputs.unsqueeze(1) * input_mask_weights.unsqueeze(-1) + \
                                mask_embed.view(1,1,1,-1) * (1 - input_mask_weights.unsqueeze(-1))
@@ -965,7 +1099,9 @@ class SOPTextCls(SOPText):
                                                     self.hidden_size) #.to(logits.device)
         
         key = pooler_outputs
+        # import pdb; pdb.set_trace()
         weighted_logits, output_mask_weights = self.output_attn(query, key, logits)
+        # import pdb; pdb.set_trace()
 
         return weighted_logits, output_mask_weights, logits, pooler_outputs
     
@@ -981,14 +1117,23 @@ class SOPTextCls(SOPText):
         else:
             _, predicted = torch.max(weighted_logits.data, -1)
         # import pdb; pdb.set_trace()
-        masks_mult = input_mask_weights.unsqueeze(2) * output_mask_weights.unsqueeze(-1) # bsz, n_masks, n_cls
+        # masks_mult = input_mask_weights.unsqueeze(2) * output_mask_weights.unsqueeze(-1) # bsz, n_masks, n_cls
         
-        masks_aggr = masks_mult.sum(1) # bsz, n_cls
-        masks_aggr_pred_cls = masks_aggr[range(bsz), predicted].unsqueeze(1)
-        max_mask_indices = output_mask_weights.max(2).values.max(1).indices
-        masks_max_pred_cls = masks_mult[range(bsz),max_mask_indices,predicted].unsqueeze(1)
-        flat_masks = compress_masks_text(input_mask_weights, output_mask_weights)
+        # masks_aggr = masks_mult.sum(1) # bsz, n_cls
+        # masks_aggr_pred_cls = masks_aggr[range(bsz), predicted].unsqueeze(1)
+        # max_mask_indices = output_mask_weights.max(2).values.max(1).indices
+        # masks_max_pred_cls = masks_mult[range(bsz),max_mask_indices,predicted].unsqueeze(1)
+            
         grouped_attributions = output_mask_weights * logits
+
+        masks_mult_pred = input_mask_weights * output_mask_weights[range(len(predicted)),:,predicted,None]
+        masks_aggr_pred_cls = masks_mult_pred.sum(1)
+        max_mask_indices = output_mask_weights.max(2).values.max(1).indices
+        masks_max_pred_cls = masks_mult_pred[range(bsz),max_mask_indices]
+
+        # import pdb; pdb.set_trace()
+        flat_masks = compress_masks_text(input_mask_weights, output_mask_weights[:,:,predicted])
+        
         return AttributionOutputSOP(weighted_logits,
                                     logits,
                                     pooler_outputs,

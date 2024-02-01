@@ -102,9 +102,9 @@ class RiseTextCls(FeatureAttrMethod):
             # Linear upsampling and cropping
             self.masks[i, :] = resize(grid[i], tuple([up_size]), order=1, mode='reflect', 
                                         anti_aliasing=False)[x:x + self.input_size]
-        self.masks = self.masks.reshape(-1, self.input_size)
+        self.masks = (self.masks.reshape(-1, self.input_size) >= 0.5)
         # np.save(savepath, self.masks)
-        self.masks = torch.from_numpy(self.masks).float()
+        self.masks = torch.from_numpy(self.masks).long()
         self.masks = self.masks.to(device)
         self.N = N
         self.p1 = p1
@@ -121,7 +121,7 @@ class RiseTextCls(FeatureAttrMethod):
                 stack = stack.reshape(N * B, L, -1)
             else:
                 stack = torch.mul(self.masks.view(N, 1, L), x.data.view(B, L))
-                import pdb; pdb.set_trace()
+                # import pdb; pdb.set_trace()
                 stack = stack.reshape(N * B, L)
             kwargs_new = {}
             for k, v in kwargs.items():
@@ -145,7 +145,8 @@ class RiseTextCls(FeatureAttrMethod):
                 label = torch.argmax(pred_x, dim=-1)
             CL = p.size(1)
             p = p.view(N, B, CL)
-            sal = torch.matmul(p.permute(1, 2, 0), self.masks.view(N, L))
+            sal = torch.matmul(p.permute(1, 2, 0), self.masks.float().view(N, L))
+            # import pdb; pdb.set_trace()
             if self.normalize:
                 sal = sal / L
             sal = sal.view(B, CL, L)
