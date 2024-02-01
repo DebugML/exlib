@@ -364,6 +364,7 @@ class SparseMultiHeadedAttention(nn.Module):
         batch_size = inputs.shape[0]
         start = index * self.embed_dim
         end = start + chunks * self.embed_dim
+        # import pdb; pdb.set_trace()
         projections = F.linear(inputs, self.input_weights[start:end]).chunk(chunks, dim=-1)
 
         output_projections = []
@@ -563,7 +564,9 @@ class SOPConfig:
             'image_size',
             'num_channels',
             'attn_patch_size',
-            'finetune_layers'
+            'finetune_layers',
+            'group_gen_scale',
+            'group_sel_scale'
         ]
         to_save = {k: v for k, v in self.__dict__.items() if k in attrs_save}
         with open(json_file, 'w') as f:
@@ -694,7 +697,8 @@ class SOPImage(SOP):
                 epoch=-1, 
                 mask_batch_size=16,
                 label=None,
-                return_tuple=False):
+                return_tuple=False,
+                binary_threshold=-1):
         if epoch == -1:
             epoch = self.num_heads
         bsz, num_channel, img_dim1, img_dim2 = inputs.shape
@@ -704,6 +708,10 @@ class SOPImage(SOP):
             grouped_inputs, input_mask_weights = self.group_generate(inputs, epoch, mask_batch_size, segs)
         else:
             grouped_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2) # directly apply mask
+
+        if binary_threshold != -1 and not self.training: # if binary threshold is set, then use binary mask above the threshold only for testing
+            input_mask_weights = (input_mask_weights > binary_threshold).float()
+            grouped_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2)
         
         # Backbone model
         logits, pooler_outputs = self.run_backbone(grouped_inputs, mask_batch_size)
@@ -941,6 +949,7 @@ class SOPText(SOP):
                 label=None,
                 return_tuple=False,
                 kwargs={}):
+        # import pdb; pdb.set_trace()
         if epoch == -1:
             epoch = self.num_heads
         bsz, seq_len = inputs.shape
@@ -1061,7 +1070,8 @@ class SOPText(SOP):
         input_mask_weights = input_mask_weights.reshape(bsz, -1, seq_len)
         
         # Always add the second part of the sequence (in question answering, it would be the qa pair)
-        input_mask_weights = input_mask_weights  + kwargs['token_type_ids'].unsqueeze(1)
+        if 'token_type_ids' in kwargs:
+            input_mask_weights = input_mask_weights  + kwargs['token_type_ids'].unsqueeze(1)
         
         masked_inputs_embeds = projected_inputs.unsqueeze(1) * input_mask_weights.unsqueeze(-1) + \
                                mask_embed.view(1,1,1,-1) * (1 - input_mask_weights.unsqueeze(-1))
@@ -1089,7 +1099,9 @@ class SOPTextCls(SOPText):
                                                     self.hidden_size) #.to(logits.device)
         
         key = pooler_outputs
+        # import pdb; pdb.set_trace()
         weighted_logits, output_mask_weights = self.output_attn(query, key, logits)
+        # import pdb; pdb.set_trace()
 
         return weighted_logits, output_mask_weights, logits, pooler_outputs
     
@@ -1111,14 +1123,17 @@ class SOPTextCls(SOPText):
         # masks_aggr_pred_cls = masks_aggr[range(bsz), predicted].unsqueeze(1)
         # max_mask_indices = output_mask_weights.max(2).values.max(1).indices
         # masks_max_pred_cls = masks_mult[range(bsz),max_mask_indices,predicted].unsqueeze(1)
+            
+        grouped_attributions = output_mask_weights * logits
 
-        masks_mult_pred = input_mask_weights * output_mask_weights[:,:,predicted]
+        masks_mult_pred = input_mask_weights * output_mask_weights[range(len(predicted)),:,predicted,None]
         masks_aggr_pred_cls = masks_mult_pred.sum(1)
         max_mask_indices = output_mask_weights.max(2).values.max(1).indices
         masks_max_pred_cls = masks_mult_pred[range(bsz),max_mask_indices]
 
+        # import pdb; pdb.set_trace()
         flat_masks = compress_masks_text(input_mask_weights, output_mask_weights[:,:,predicted])
-        grouped_attributions = output_mask_weights * logits
+        
         return AttributionOutputSOP(weighted_logits,
                                     logits,
                                     pooler_outputs,

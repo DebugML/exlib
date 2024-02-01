@@ -38,6 +38,7 @@ class GradCAMImageCls(FeatureAttrMethod):
                 result = result.transpose(2, 3).transpose(1, 2)
                 return result
             
+            
         with torch.enable_grad():
             self.grad_cam = GradCAM(model=model, target_layers=self.target_layers,
                                     reshape_transform=reshape_transform,
@@ -53,7 +54,7 @@ class GradCAMImageCls(FeatureAttrMethod):
                 grad_cam_results.append(grad_cam_result)
         grad_cam_results = torch.cat(grad_cam_results)
 
-        return FeatureAttrOutput(grad_cam_result.unsqueeze(1), grad_cam_result)
+        return FeatureAttrOutput(grad_cam_results, grad_cam_result)
     
 
 class GradCAMTextCls(FeatureAttrMethod):

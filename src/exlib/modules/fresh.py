@@ -40,6 +40,8 @@ class TopKAttentionLayer(nn.Module):
         
         if 0 < self.k < 1:
             k_values = (torch.sum(attn_mask, dim=-1) * self.k).int()
+            if k_values.min() == 0:
+                k_values[k_values == 0] = 1
         else:
             k_values = self.k * torch.ones(attn.size(0), dtype=torch.int)
 
@@ -169,7 +171,7 @@ class FRESH(PreTrainedModel):
                     return_dict=True
                 )
                 attn = self.postprocess_attn(outputs)
-                input_mask_weights = self.input_attn(attn)
+                input_mask_weights = self.input_attn(attn, attn_mask=attention_mask)
                 # print('input_mask_weights', input_mask_weights.shape)
                 # import pdb
                 # pdb.set_trace()
@@ -197,40 +199,61 @@ class FRESH(PreTrainedModel):
 
                 masked_inputs = input_mask_weights * inputs
             else:
-                outputs = self.blackbox_model(
-                    inputs,
-                    token_type_ids=token_type_ids,
-                    attention_mask=attention_mask,
-                    output_attentions=True,
-                    return_dict=True
-                )
+                if token_type_ids is None:
+                    outputs = self.blackbox_model(
+                        inputs,
+                        attention_mask=attention_mask,
+                        output_attentions=True,
+                        return_dict=True
+                    )
+                else:
+                    outputs = self.blackbox_model(
+                        inputs,
+                        token_type_ids=token_type_ids,
+                        attention_mask=attention_mask,
+                        output_attentions=True,
+                        return_dict=True
+                    )
                 attn = self.postprocess_attn(outputs)
-                input_mask_weights = self.input_attn(attn)
+                input_mask_weights = self.input_attn(attn, attn_mask=attention_mask)
                 
-                to_keep = (token_type_ids[0] == 1) * attention_mask  # query
-                document_attn = (token_type_ids[0] == 0) * attention_mask * input_mask_weights
-                to_keep = to_keep + document_attn
+                if token_type_ids is None:
+                    to_keep = input_mask_weights * attention_mask
+                else:
+                    to_keep = (token_type_ids[0] == 1) * attention_mask  # query
+                    document_attn = (token_type_ids[0] == 0) * attention_mask * input_mask_weights
+                    to_keep = to_keep + document_attn
                 # compress TODO
                 # Step 1: Masking and Compacting
                 masked_inputs = [inputs[i][to_keep[i].bool()] for i in range(to_keep.shape[0])]
-                masked_token_type_ids = [token_type_ids[i][to_keep[i].bool()] for i in range(to_keep.shape[0])]
+                if token_type_ids is not None:
+                    masked_token_type_ids = [token_type_ids[i][to_keep[i].bool()] for i in range(to_keep.shape[0])]
+                else:
+                    masked_token_type_ids = None
                 masked_attention_mask = [attention_mask[i][to_keep[i].bool()] for i in range(to_keep.shape[0])]
 
                 # Step 2: Padding
                 max_len = 512
                 padded_inputs = torch.stack([torch.cat([m, torch.zeros(max_len - m.shape[0], device=inputs.device)]) \
                                              for m in masked_inputs])
-                padded_token_type_ids = torch.stack([torch.cat([m, torch.zeros(max_len - m.shape[0], device=inputs.device)]) \
+                if token_type_ids is not None:
+                    padded_token_type_ids = torch.stack([torch.cat([m, torch.zeros(max_len - m.shape[0], device=inputs.device)]) \
                                              for m in masked_token_type_ids])
+                else:
+                    padded_token_type_ids = None
                 padded_attention_mask = torch.stack([torch.cat([m, torch.zeros(max_len - m.shape[0], device=inputs.device)]) \
                                              for m in masked_attention_mask])
         
         if self.model_type == 'image':
             outputs = self.blackbox_model_pred(masked_inputs)
         else:  # text
-            outputs = self.blackbox_model_pred(padded_inputs.int(),
-                                          token_type_ids=padded_token_type_ids.int(),
-                                          attention_mask=padded_attention_mask.int())
+            if padded_token_type_ids is None:
+                outputs = self.blackbox_model_pred(padded_inputs.int(),
+                                              attention_mask=padded_attention_mask.int())
+            else:
+                outputs = self.blackbox_model_pred(padded_inputs.int(),
+                                            token_type_ids=padded_token_type_ids.int(),
+                                            attention_mask=padded_attention_mask.int())
         
         if self.return_tuple: 
             return AttributionOutputFresh(self.postprocess_logits(outputs),
