@@ -287,7 +287,7 @@ class OrganGNGModel(nn.Module):
 
 
 class OrganGNGSopSelectorModel(OrganGNGModel):
-    def __init__(self, num_organs=4):
+    def __init__(self, num_organs=4, wrapper_config_filepath='organs/abdomen_unet_wrapper_a.json'):
         super().__init__(num_organs=num_organs)
         self.organ_seg_model = Unet(
                 encoder_name = "resnet50",
@@ -301,21 +301,14 @@ class OrganGNGSopSelectorModel(OrganGNGModel):
                 encoder_weights = "imagenet",
                 in_channels = 3,
                 classes = 3,
-                activation = "softmax2d")
+                activation = "identity")
         
-        config = SOPConfig(
-            attn_patch_size=32,
-            num_heads=1,
-            num_masks_sample=20,
-            finetune_layers=['segmentation_head'],
-            hidden_size=16,
-            num_labels=3,
-            image_size=(352, 640),
-            num_channels=num_organs,
-            num_masks_max=100
-        )
+        self.wrapper_config_filepath = wrapper_config_filepath
+        print('wrapper_config_filepath', wrapper_config_filepath)
+        config = SOPConfig(json_file=wrapper_config_filepath)
 
         # allow specifying args to be different from in the json file
+        # print(get_chained_attr(self.gonogo_model, config.finetune_layers[0])[0].weight.shape)
         class_weights = get_chained_attr(self.gonogo_model, config.finetune_layers[0])[0].weight.view(3,-1).clone()
         self.sop_model = SOPImageSeg(config, 
                               self.gonogo_model,
@@ -329,7 +322,6 @@ class OrganGNGSopSelectorModel(OrganGNGModel):
     def forward(self, x, get_organs=False, return_dict=False):
         organ_output = self.organ_seg_model(x)
         organ_mask_output = organ_output.logits.argmax(dim=1).byte()
-        # organ_mask_output_resize = F.interpolate(organ_mask_output, size=(x.shape[2], x.shape[3]), mode='nearest')
         organ_mask_output_bools = []
         for organ_mask_output_i in organ_mask_output:
             organ_mask_output_bool = convert_idx_masks_to_bool(organ_mask_output_i, 
@@ -348,3 +340,83 @@ class OrganGNGSopSelectorModel(OrganGNGModel):
         if get_organs:
             return organ_output.logits, gonogo_output.logits
         return gonogo_output.logits
+    
+    
+def miou(predict, label, class_num=3):
+    """
+        get miou of multiple batches
+        @param predict: Shape:[B, W, H]
+        @param label: Shape:[B, W, H]
+    """
+    batch = label.shape[0]
+    predict, label = predict.flatten(), label.flatten()  
+    #select pixels to be segmentated
+    k = (predict >= 0) & (predict < class_num) 
+    hist = torch.bincount(class_num * predict[k].type(torch.int32) + label[k], minlength=batch * (class_num ** 2)).reshape(batch, class_num, class_num)
+    hist = hist.sum(0)
+
+    miou = torch.diag(hist) / torch.maximum((hist.sum(1) + hist.sum(0) - torch.diag(hist)), torch.tensor(1))
+    return miou.mean()
+
+
+def dice_acc(predict, label):
+    """
+        get dice coefficient of multiple batches
+        @param predict: Shape:[B, C, W, H]  C = num_classes
+        @param label: Shape:[B, C, W, H]
+    """
+    # import pdb; pdb.set_trace()
+    batch_num, class_num = predict.shape[0: 2]
+    assert predict.size() == label.size(), "the size of predict and target must be equal."
+    
+    intersection = (predict * label).reshape((batch_num, class_num, -1)).sum(dim=2)
+    union = (predict + label).reshape((batch_num, class_num, -1)).sum(dim=2)
+    dice = (2. * intersection + 1) / (union + 1)
+    dice = dice.mean()
+    return dice
+
+
+def mpa(predict, label, class_num=3):
+    """
+       get MPA of multiple batches
+        @param predict: Shape:[B, W, H]
+        @param label: Shape:[B, W, H]
+    """
+    batch = label.shape[0]
+    predict, label = predict.flatten(), label.flatten() 
+    k = (predict >= 0) & (predict < class_num) 
+    hist = torch.bincount(class_num * predict[k].type(torch.int32) + label[k], minlength=batch * (class_num ** 2)).reshape(batch, class_num, class_num)
+    hist = hist.sum(0)
+    acc_cls = torch.diag(hist) / hist.sum(axis=1)
+    acc_cls = torch.nanmean(acc_cls)    #.type(torch.float32)
+    return acc_cls
+
+
+
+def weighted_dice_loss(predict, label):
+    """
+    Computes the weighted dice loss for multi-class image segmentation.
+    Args:
+        predict: Tensor of predicted values with shape (batch_size, num_classes, height, width)
+        label: Tensor of ground truth labels with shape (batch_size, num_classes, height, width)
+    Returns:
+        Weighted dice loss tensor
+    """
+    batch_size = predict.size(0)
+    num_classes = predict.size(1)
+    smooth = 1e-5  # smoothing factor to avoid division by zero
+    total_loss = 0.0
+    
+    for i in range(batch_size):
+        for j in range(num_classes):
+            predict_mask = predict[i, j, :, :]
+            label_mask = label[i, j, :, :]
+            intersection = (predict_mask * label_mask).sum()
+            area_predict = predict_mask.sum()  # sum of all possibilities
+            area_label = label_mask.sum()  #sum of all ones 
+
+            weight = area_label/(640*360 + smooth)
+            loss = 1 - ((2.0 * intersection + smooth) / (area_predict + area_label + smooth)) * weight
+            total_loss +=  loss
+            
+    return total_loss / (batch_size * num_classes)

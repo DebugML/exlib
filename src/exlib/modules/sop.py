@@ -16,6 +16,7 @@ import json
 from collections import namedtuple
 import os
 
+EPS = 1e-8
 
 AttributionOutputSOP = namedtuple("AttributionOutputSOP", 
                                   ["logits",
@@ -447,6 +448,8 @@ class GroupGenerateLayer(nn.Module):
                 attn_weights_j = self.multihead_attns[head_j](query, key_value, key_value)
                 attn_weights.append(attn_weights_j)
             attn_weights = torch.stack(attn_weights, dim=1)
+        # import pdb; pdb.set_trace()
+        # attn_weights = 
         return attn_weights
 
 
@@ -488,6 +491,7 @@ class SOPConfig:
     def __init__(self,
                  json_file=None,
                  hidden_size: int = None,
+                 input_hidden_size: int = None,
                  num_labels: int = None,
                  projected_input_scale: int = None,
                  num_heads: int = None,
@@ -498,13 +502,20 @@ class SOPConfig:
                  attn_patch_size: int = None,
                  finetune_layers=None,
                  group_gen_scale: int = None,
+                 group_gen_temp_alpha: int = None,
+                 group_gen_temp_beta: int = None,
                  group_sel_scale: int = None,
+                #  group_gen_scale_sigmoid: int = None,
+                #  group_gen_scale_sigmoid_log: int = None,
+                #  group_gen_scale_sigmoid_mode: str = None,
+                 freeze_projection: str = None
                 ):
         # all the config from the json file will be in self.__dict__
         super().__init__()
 
         # set default values
         self.hidden_size = 512
+        self.input_hidden_size = None
         self.num_labels = 2
         self.projected_input_scale = 1
         self.num_heads = 1
@@ -515,7 +526,13 @@ class SOPConfig:
         self.attn_patch_size = 16
         self.finetune_layers=[]
         self.group_gen_scale = 1
+        self.group_gen_temp_alpha = 1
+        self.group_gen_temp_beta = 1
         self.group_sel_scale = 1
+        # self.group_gen_scale_sigmoid = -1
+        # self.group_gen_scale_sigmoid_log = -1
+        # self.group_gen_scale_sigmoid_mode = 'median' # or '0.5'
+        self.freeze_projection = False
 
         # first load the config from json file if specified
         if json_file is not None:
@@ -524,6 +541,8 @@ class SOPConfig:
         # overwrite the config from json file if specified
         if hidden_size is not None:
             self.hidden_size = hidden_size
+        if input_hidden_size is not None:
+            self.input_hidden_size = input_hidden_size
         if num_labels is not None: 
             self.num_labels = num_labels
         if projected_input_scale is not None:
@@ -544,8 +563,22 @@ class SOPConfig:
             self.finetune_layers = finetune_layers
         if group_gen_scale is not None:
             self.group_gen_scale = group_gen_scale
+        if group_gen_temp_alpha is not None:
+            self.group_gen_temp_alpha = group_gen_temp_alpha
+            assert group_gen_temp_alpha > 0
+        if group_gen_temp_beta is not None:
+            self.group_gen_temp_beta = group_gen_temp_beta
+            assert group_gen_temp_beta > 0
         if group_sel_scale is not None:
             self.group_sel_scale = group_sel_scale
+        # if group_gen_scale_sigmoid is not None:
+        #     self.group_gen_scale_sigmoid = group_gen_scale_sigmoid
+        # if group_gen_scale_sigmoid_log is not None:
+        #     self.group_gen_scale_sigmoid_log = group_gen_scale_sigmoid_log
+        # if group_gen_scale_sigmoid_mode is not None:
+        #     self.group_gen_scale_sigmoid_mode = group_gen_scale_sigmoid_mode
+        if freeze_projection is not None:
+            self.freeze_projection = freeze_projection
 
         
     def update_from_json(self, json_file):
@@ -556,6 +589,7 @@ class SOPConfig:
     def save_to_json(self, json_file):
         attrs_save = [
             'hidden_size',
+            'input_hidden_size',
             'num_labels',
             'projected_input_scale',
             'num_heads',
@@ -566,7 +600,13 @@ class SOPConfig:
             'attn_patch_size',
             'finetune_layers',
             'group_gen_scale',
-            'group_sel_scale'
+            'group_gen_temp_alpha',
+            'group_gen_temp_beta',
+            'group_sel_scale',
+            # 'group_gen_scale_sigmoid',
+            # 'group_gen_scale_sigmoid_log',
+            # 'group_gen_scale_sigmoid_mode',
+            'freeze_projection'
         ]
         to_save = {k: v for k, v in self.__dict__.items() if k in attrs_save}
         with open(json_file, 'w') as f:
@@ -584,6 +624,7 @@ class SOP(nn.Module):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size  # match black_box_model hidden_size
+        self.input_hidden_size = config.input_hidden_size if (hasattr(config, 'input_hidden_size') is not None and config.input_hidden_size is not None) else self.hidden_size
         self.num_classes = config.num_labels if hasattr(config, 'num_labels') is not None else 1  # 1 is for regression
         self.projected_input_scale = config.projected_input_scale if hasattr(config, 'projected_input_scale') else 1
         self.num_heads = config.num_heads
@@ -591,7 +632,13 @@ class SOP(nn.Module):
         self.num_masks_max = config.num_masks_max
         self.finetune_layers = config.finetune_layers
         self.group_gen_scale = config.group_gen_scale if hasattr(config, 'group_gen_scale') else 1
+        self.group_gen_temp_alpha = config.group_gen_temp_alpha \
+            if hasattr(config, 'group_gen_temp_alpha') else 1
+        self.group_gen_temp_beta = config.group_gen_temp_beta if hasattr(config, 'group_gen_temp_beta') else 1
+        # self.group_gen_scale_sigmoid = config.group_gen_scale_sigmoid if hasattr(config, 'group_gen_scale_sigmoid') else -1
+        # self.group_gen_scale_sigmoid_log = config.group_gen_scale_sigmoid_log if hasattr(config, 'group_gen_scale_sigmoid_log') else -1
         self.group_sel_scale = config.group_sel_scale if hasattr(config, 'group_sel_scale') else 1
+        # self.group_gen_scale_sigmoid_mode = config.group_gen_scale_sigmoid_mode if hasattr(config, 'group_gen_scale_sigmoid_mode') else 'median'
 
         # blackbox model and finetune layers
         self.blackbox_model = backbone_model
@@ -608,7 +655,7 @@ class SOP(nn.Module):
             # print('shallow copy class weights')
         
         
-        self.input_attn = GroupGenerateLayer(hidden_dim=self.hidden_size,
+        self.input_attn = GroupGenerateLayer(hidden_dim=self.input_hidden_size,
                                              num_heads=self.num_heads,
                                              scale=self.group_gen_scale)
         # output
@@ -620,6 +667,13 @@ class SOP(nn.Module):
         # blackbox_model = self.blackbox_model.clone()
         # self.init_weights()
         # self.blackbox_model = blackbox_model
+
+        if hasattr(self.config, 'freeze_projection') and (self.config.freeze_projection):
+            for name, param in self.projection.named_parameters():
+                param.requires_grad = False
+            print('projection layer is frozen')
+        else:
+            print('projection layer is not frozen')
 
         for name, param in self.blackbox_model.named_parameters():
             param.requires_grad = False
@@ -672,24 +726,25 @@ class SOPImage(SOP):
         else:
             self.init_projection()
 
+        # self.projection_up = nn.ConvTranspose2d(1, 
+        #                                             1, 
+        #                                             kernel_size=self.attn_patch_size, 
+        #                                             stride=self.attn_patch_size)  # make each patch a vec
+        # self.projection_up.weight = nn.Parameter(torch.ones_like(self.projection_up.weight))
+        # self.projection_up.bias = nn.Parameter(torch.zeros_like(self.projection_up.bias))
+        # self.projection_up.weight.requires_grad = False
+        # self.projection_up.bias.requires_grad = False
+
         # Initialize the weights of the model
         # self.init_weights()
         self.init_grads()
 
     def init_projection(self):
         self.projection = nn.Conv2d(self.config.num_channels, 
-                                    self.hidden_size, 
+                                    self.input_hidden_size, 
                                     kernel_size=self.attn_patch_size, 
                                     stride=self.attn_patch_size)  # make each patch a vec
-        self.projection_up = nn.ConvTranspose2d(1, 
-                                                    1, 
-                                                    kernel_size=self.attn_patch_size, 
-                                                    stride=self.attn_patch_size)  # make each patch a vec
-        self.projection_up.weight = nn.Parameter(torch.ones_like(self.projection_up.weight))
-        self.projection_up.bias = nn.Parameter(torch.zeros_like(self.projection_up.bias))
-        self.projection_up.weight.requires_grad = False
-        self.projection_up.bias.requires_grad = False
-
+        
     def forward(self, 
                 inputs, 
                 segs=None, 
@@ -751,6 +806,7 @@ class SOPImage(SOP):
         bsz, num_channel, img_dim1, img_dim2 = inputs.shape
         if segs is None:   # should be renamed "segments"
             projected_inputs = self.projection(inputs)
+            num_patches = projected_inputs.shape[-2:]
             projected_inputs = projected_inputs.flatten(2).transpose(1, 2)  # bsz, img_dim1 * img_dim2, num_channel
             projected_inputs = projected_inputs * self.projected_input_scale
 
@@ -761,12 +817,13 @@ class SOPImage(SOP):
                 projected_query = projected_inputs
             input_mask_weights_cand = self.input_attn(projected_query, projected_inputs, epoch=epoch)
             
-            num_patches = ((self.image_size[0] - self.attn_patch_size) // self.attn_patch_size + 1, 
-                        (self.image_size[1] - self.attn_patch_size) // self.attn_patch_size + 1)
+            # num_patches = ((self.image_size[0] - self.attn_patch_size) // self.attn_patch_size + 1, 
+            #             (self.image_size[1] - self.attn_patch_size) // self.attn_patch_size + 1)
             input_mask_weights_cand = input_mask_weights_cand.reshape(-1, 1, num_patches[0], num_patches[1])
-            input_mask_weights_cand = self.projection_up(input_mask_weights_cand, 
-                                                         output_size=torch.Size([input_mask_weights_cand.shape[0], 1, 
-                                                                                 img_dim1, img_dim2]))
+            input_mask_weights_cand = torch.nn.functional.interpolate(input_mask_weights_cand, size=(img_dim1, img_dim2), mode='nearest')
+            # input_mask_weights_cand = self.projection_up(input_mask_weights_cand, 
+            #                                              output_size=torch.Size([input_mask_weights_cand.shape[0], 1, 
+            #                                                                      img_dim1, img_dim2]))
             input_mask_weights_cand = input_mask_weights_cand.view(bsz, -1, img_dim1, img_dim2)
             input_mask_weights_cand = torch.clip(input_mask_weights_cand, max=1.0)
         else:
@@ -789,7 +846,26 @@ class SOPImage(SOP):
         scale_factor = 1.0 / input_mask_weights_cand.reshape(bsz, -1, 
                                                         img_dim1 * img_dim2).max(dim=-1).values
         input_mask_weights_cand = input_mask_weights_cand * scale_factor.view(bsz, -1,1,1)
+
+        # temperature scaling to make the mask weights closer to 0 or 1
+        # import pdb; pdb.set_trace()
+        input_mask_weights_cand = torch.sigmoid(torch.log(input_mask_weights_cand / \
+            self.group_gen_temp_beta + EPS) / self.group_gen_temp_alpha)
+        # print('self.group_gen_temperature', self.group_gen_temperature)
         
+        # if self.group_gen_scale_sigmoid != -1:
+        #     # import pdb; pdb.set_trace()
+        #     if self.group_gen_scale_sigmoid_mode == 'median':
+        #         input_mask_weights_cand = torch.sigmoid((input_mask_weights_cand - input_mask_weights_cand.median())/(input_mask_weights_cand.max() - input_mask_weights_cand.min()) * self.group_gen_scale_sigmoid)
+        #     elif self.group_gen_scale_sigmoid_mode == 'min':
+        #         input_mask_weights_cand = torch.sigmoid(((input_mask_weights_cand - input_mask_weights_cand.min())/ \
+        #                 (input_mask_weights_cand.max() - input_mask_weights_cand.min()) - 0.5) * self.group_gen_scale_sigmoid)
+        #     elif self.group_gen_scale_sigmoid_mode == '0.5':
+        #         input_mask_weights_cand = torch.sigmoid((input_mask_weights_cand - 0.5) * self.group_gen_scale_sigmoid)
+        #     elif self.group_gen_scale_sigmoid_mode == 'log':
+        #         input_mask_weights_cand = torch.sigmoid(torch.log(input_mask_weights_cand * self.group_gen_scale_sigmoid_log + 1e-8) * self.group_gen_scale_sigmoid)
+            # else: # none
+            #     raise ValueError('group_gen_scale_sigmoid_mode should be either median or min or 0.5 or log')
         
         # we are using iterative training
         # we will train some masks every epoch
