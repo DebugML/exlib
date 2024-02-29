@@ -760,13 +760,13 @@ class SOPImage(SOP):
         
         # Mask (Group) generation
         if input_mask_weights is None:
-            grouped_inputs, input_mask_weights = self.group_generate(inputs, epoch, mask_batch_size, segs)
+            grouped_inputs, input_mask_weights = self.group_generate(inputs, epoch, mask_batch_size, segs, binary_threshold)
         else:
             grouped_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2) # directly apply mask
 
-        if binary_threshold != -1 and not self.training: # if binary threshold is set, then use binary mask above the threshold only for testing
-            input_mask_weights = (input_mask_weights > binary_threshold).float()
-            grouped_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2)
+        # if binary_threshold != -1 and not self.training: # if binary threshold is set, then use binary mask above the threshold only for testing
+        #     input_mask_weights = (input_mask_weights > binary_threshold).float()
+        #     grouped_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2)
         
         # Backbone model
         logits, pooler_outputs = self.run_backbone(grouped_inputs, mask_batch_size)
@@ -802,7 +802,7 @@ class SOPImage(SOP):
         pooler_outputs = torch.cat(pooler_outputs).view(bsz, num_masks, self.hidden_size, -1)
         return logits, pooler_outputs
     
-    def group_generate(self, inputs, epoch, mask_batch_size, segs=None):
+    def group_generate(self, inputs, epoch, mask_batch_size, segs=None, binary_threshold=-1):
         bsz, num_channel, img_dim1, img_dim2 = inputs.shape
         if segs is None:   # should be renamed "segments"
             projected_inputs = self.projection(inputs)
@@ -848,9 +848,12 @@ class SOPImage(SOP):
         input_mask_weights_cand = input_mask_weights_cand * scale_factor.view(bsz, -1,1,1)
 
         # temperature scaling to make the mask weights closer to 0 or 1
-        # import pdb; pdb.set_trace()
         input_mask_weights_cand = torch.sigmoid(torch.log(input_mask_weights_cand / \
             self.group_gen_temp_beta + EPS) / self.group_gen_temp_alpha)
+        
+        if binary_threshold != -1 and not self.training: # if binary threshold is set, then use binary mask above the threshold only for testing
+            input_mask_weights_cand = (input_mask_weights_cand > binary_threshold).float()
+
         # print('self.group_gen_temperature', self.group_gen_temperature)
         
         # if self.group_gen_scale_sigmoid != -1:
@@ -1024,7 +1027,8 @@ class SOPText(SOP):
                 mask_batch_size=16,
                 label=None,
                 return_tuple=False,
-                kwargs={}):
+                kwargs={},
+                binary_threshold=-1):
         # import pdb; pdb.set_trace()
         if epoch == -1:
             epoch = self.num_heads
@@ -1033,11 +1037,11 @@ class SOPText(SOP):
         # Mask (Group) generation
         if input_mask_weights is None:
             grouped_inputs_embeds, input_mask_weights, grouped_kwargs = self.group_generate(inputs, epoch, mask_batch_size, 
-                                                                                            segs, kwargs)
+                                                                                            segs, kwargs, binary_threshold)
             grouped_inputs = None
         else:
             grouped_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2) # directly apply mask
-        
+
         # Backbone model
         logits, pooler_outputs = self.run_backbone(grouped_inputs, mask_batch_size, kwargs=grouped_kwargs)
 
@@ -1079,7 +1083,7 @@ class SOPText(SOP):
         pooler_outputs = torch.cat(pooler_outputs).view(bsz, num_masks, self.hidden_size, -1)
         return logits, pooler_outputs
     
-    def group_generate(self, inputs, epoch, mask_batch_size=16, segs=None, kwargs={}):
+    def group_generate(self, inputs, epoch, mask_batch_size=16, segs=None, kwargs={}, binary_threshold=-1):
         bsz, seq_len = inputs.shape
         mask_embed = self.projection(torch.tensor([0]).int().to(inputs.device))
         projected_inputs = self.projection(inputs)
@@ -1130,6 +1134,10 @@ class SOPText(SOP):
             
         scale_factor = 1.0 / input_mask_weights_cand.max(dim=-1).values
         input_mask_weights_cand = input_mask_weights_cand * scale_factor.view(bsz, -1,1)
+        input_mask_weights_cand = torch.sigmoid(torch.log(input_mask_weights_cand / \
+            self.group_gen_temp_beta + EPS) / self.group_gen_temp_alpha)
+        if binary_threshold != -1 and not self.training: # if binary threshold is set, then use binary mask above the threshold only for testing
+            input_mask_weights_cand = (input_mask_weights_cand > binary_threshold).float()
 
         # we are using iterative training
         # we will train some masks every epoch
