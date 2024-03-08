@@ -103,10 +103,6 @@ class InsDelCls(Evaluator):
                                                                                                channel_indices, 
                                                                                                coords]
             all_states.append(start.clone())
-            if (start == finish).all():
-                for j in range(i+1, n_steps+1):
-                    scores[:, j] = scores[:, j - 1]
-                break
             
         auc_score = self.auc(scores)
         if return_dict:
