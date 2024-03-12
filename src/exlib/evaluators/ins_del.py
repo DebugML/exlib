@@ -75,6 +75,7 @@ class InsDelCls(Evaluator):
         # finish[finish < 0] = 0.0
         # finish[finish > 1] = 1.0
         all_states = []
+        all_states.append(start.clone())
 
         scores = torch.zeros(bsz, n_steps + 1).cuda()
         

@@ -890,6 +890,19 @@ class SOPImage(SOP):
     def group_select(self, logits, pooler_outputs, img_dim1, img_dim2):
         raise NotImplementedError
 
+    def get_masks_used(self, outputs, i=0):
+        pred = outputs.logits[i].argmax(-1).item()
+        pred_mask_idxs_sort = outputs.mask_weights[i,:,pred].argsort(descending=True)
+        mask_weights_sort = (outputs.mask_weights * outputs.logits_all)[i,pred_mask_idxs_sort,pred]
+        masks_sort = outputs.masks[0,pred_mask_idxs_sort]
+        masks_sort_used = (masks_sort[mask_weights_sort != 0] > masks_sort[mask_weights_sort != 0].mean()).int()
+        mask_weights_sort_used = mask_weights_sort[mask_weights_sort > 0]
+        return {
+            'masks_sort_used': masks_sort_used, 
+            'mask_weights_sort_used': mask_weights_sort_used
+        }
+        
+
 class SOPImageCls(SOPImage):
     def group_select(self, logits, pooler_outputs, img_dim1, img_dim2):
         bsz, num_masks = logits.shape[:2]
