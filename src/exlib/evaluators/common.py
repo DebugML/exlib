@@ -34,3 +34,30 @@ def convert_idx_masks_to_bool(masks):
     masks_bool = (broadcasted_masks == idxs)
 	
     return masks_bool
+
+
+# text
+def apply_mask(kwargs, mask, mode='mult'):
+    kwargs_masked = {}
+    assert mode in ['mult']
+    if mode == 'mult':
+        for k, v in kwargs.items():
+            kwargs_masked[k] = v * mask.to(v.dtype)
+    else:
+        raise ValueError(f'Mode {mode} not in the list of modes.')
+        # inputs_new = inputs * mask.long()
+    return kwargs_masked
+
+def masked_predict(inputs, mask, model, mode='mult', kwargs={}):
+    inputs_masked = apply_mask({'inputs': inputs}, mask, mode)['inputs']
+    kwargs_masked = apply_mask(kwargs, mask, mode)
+    logits_masked = model(inputs_masked, **kwargs_masked)
+    return logits_masked
+
+def predict(logits):
+    probs = torch.softmax(logits, dim=-1)
+    pred = torch.argmax(probs)
+    return probs, pred
+
+def kl_div(probs_output, probs_target):
+    return torch.nn.functional.kl_div(torch.log(probs_output), probs_target, reduction='sum')

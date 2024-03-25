@@ -233,7 +233,7 @@ class FRESH(PreTrainedModel):
                 masked_attention_mask = [attention_mask[i][to_keep[i].bool()] for i in range(to_keep.shape[0])]
 
                 # Step 2: Padding
-                max_len = 512
+                max_len = inputs.shape[-1]
                 padded_inputs = torch.stack([torch.cat([m, torch.zeros(max_len - m.shape[0], device=inputs.device)]) \
                                              for m in masked_inputs])
                 if token_type_ids is not None:

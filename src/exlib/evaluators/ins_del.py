@@ -33,7 +33,7 @@ class InsDelCls(Evaluator):
         # else:
         #     return (arr.sum(-2) - arr[:, 0] / 2 - arr[:, -2] / 2) / (arr.shape[1] - 1)
 
-    def forward(self, X, Z, kwargs={}, return_dict=False):
+    def forward(self, X, Z, kwargs={}, return_dict=False, verbose=0):
         """Run metric on one image-saliency pair.
             Args:
                 X = img_tensor (Tensor): normalized image tensor. (bsz, n_channel, img_dim1, img_dim2)
@@ -84,7 +84,12 @@ class InsDelCls(Evaluator):
         salient_order = torch.argsort(t_r, dim=-1)
         salient_order = torch.flip(salient_order, [1, 2])
 
-        for i in tqdm(range(n_steps+1)):
+        if verbose > 0:
+            progress_bar = tqdm(range(n_steps+1))
+        else:
+            progress_bar = range(n_steps+1)
+        # for i in tqdm(range(n_steps+1)):
+        for i in progress_bar:
             with torch.no_grad():
                 pred_mod = self.model(start, **kwargs)
                 if self.postprocess is not None:
