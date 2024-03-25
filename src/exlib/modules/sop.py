@@ -764,10 +764,6 @@ class SOPImage(SOP):
         else:
             grouped_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2) # directly apply mask
 
-        # if binary_threshold != -1 and not self.training: # if binary threshold is set, then use binary mask above the threshold only for testing
-        #     input_mask_weights = (input_mask_weights > binary_threshold).float()
-        #     grouped_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2)
-        
         # Backbone model
         logits, pooler_outputs = self.run_backbone(grouped_inputs, mask_batch_size)
         # return logits

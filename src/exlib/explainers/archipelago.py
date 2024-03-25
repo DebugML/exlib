@@ -67,14 +67,14 @@ class ArchipelagoImageCls(FeatureAttrMethod):
             expln_flat_masks_all.append(expln_flat_masks)
             masks_all.append(masks)
             mask_weights_all.append(mask_weights)
-        
+
         expln_scores = torch.stack(expln_scores_all, dim=0)
         expln_flat_masks = torch.stack(expln_flat_masks_all, dim=0)
 
         return FeatureAttrOutput(expln_scores, {
             "expln_flat_masks": expln_flat_masks,
             "masks": masks_all,
-            "mask_weights": mask_weights_all,
+            "mask_weights": mask_weights_all
         })
 
 
