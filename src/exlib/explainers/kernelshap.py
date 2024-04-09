@@ -122,7 +122,7 @@ class KernelShapImageCls(FeatureAttrMethod):
         self.KernelShapImageExplainerKwargs = KernelShapImageExplainerKwargs
         self.explain_instance_kwargs = explain_instance_kwargs
         self.get_image_and_mask_kwargs = get_image_and_mask_kwargs
-    
+
 
     def forward(self, x, t):
         if not isinstance(t, torch.Tensor):
@@ -139,7 +139,9 @@ class KernelShapImageCls(FeatureAttrMethod):
                     explain_instance_kwargs=self.explain_instance_kwargs,
                     get_image_and_mask_kwargs=self.get_image_and_mask_kwargs)
 
-            attrs.append(out.attributions.unsqueeze(0))
+            attrs.append(out.attributions.unsqueeze(0).repeat(3,1,1))
             kshap_exps.append(out.explainer_output)
 
-        return FeatureAttrOutput(torch.cat(attrs, dim=0), kshap_exps)
+
+        return FeatureAttrOutput(torch.stack(attrs), kshap_exps)
+
