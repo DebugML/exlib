@@ -9,6 +9,7 @@ from .common import *
 def explain_image_cls_with_shap(model, x, t, mask_value, shap_explainer_kwargs):
     assert len(x) == len(t)
     device = next(model.parameters()).device
+    print('device', device)
 
     def f(x_np):
         with torch.no_grad():
@@ -24,12 +25,17 @@ def explain_image_cls_with_shap(model, x, t, mask_value, shap_explainer_kwargs):
     shap_values = []
     for xi, ti in zip(x_np, t):
         if isinstance(ti, torch.Tensor):
-            ti = ti.cpu().item()
-        out = explainer(np.expand_dims(xi, axis=0), outputs=[ti])
+            if len(ti.shape) == 0:
+                ti = [ti.cpu().item()]
+            else:
+                ti = ti.cpu().numpy().tolist()
+        else:
+            if isinstance(ti, int):
+                ti = [ti]
+        out = explainer(np.expand_dims(xi, axis=0), outputs=ti)
         svs = torch.from_numpy(out.values) # (1,H,W,C,1)
         shap_outs.append(out)
         shap_values.append(svs[0,:,:,:,0].permute(2,0,1)) # (C,H,W)
-
     shap_values = torch.stack(shap_values)
     return FeatureAttrOutput(shap_values, shap_outs)
 
