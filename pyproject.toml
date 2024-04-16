@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "exlib"
 version = "0.0.1"
@@ -8,10 +12,14 @@ dependencies = [
   'lime >= 0.2',
   'shap >= 0.42',
   'torch >= 2.0',
+  'torchvision >= 0.15', 
+  'torchaudio >= 2.0',
   'grad-cam >= 1.4.8',
-  'jsonlines >= 3.1.0'
+  'jsonlines >= 3.1.0', 
+  'segmentation-models-pytorch >= 0.3.3',
+  'scikit-image >= 0.22'
 ]
-description = "Tools for explainability"
+description = "Toolkit for explainability by BrachioLab"
 readme = "README.md"
 requires-python = ">=3.7"
 classifiers = [
@@ -20,6 +28,11 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
+[project.optional-dependencies]
+dev = [
+  'notebook'
+]
+
 [project.urls]
-"Homepage" = "https://github.com/DebugML/exlib"
-"Bug Tracker" = "https://github.com/DebugML/exlib/issues"
+"Homepage" = "https://github.com/BrachioLab/exlib"
+"Bug Tracker" = "https://github.com/BrachioLab/exlib/issues"
