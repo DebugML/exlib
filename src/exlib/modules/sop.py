@@ -15,6 +15,7 @@ import copy
 import json
 from collections import namedtuple
 import os
+import math
 
 EPS = 1e-8
 
@@ -31,6 +32,25 @@ AttributionOutputSOP = namedtuple("AttributionOutputSOP",
                                    "grouped_attributions"])
 
 
+def gaussian_kernel(size, sigma, device):
+    """Generates a 2D Gaussian kernel."""
+    coords = torch.tensor([(x - size // 2) for x in range(size)]).to(device)
+    grid = coords.unsqueeze(0).repeat(size, 1)
+    kernel = torch.exp(-(grid ** 2 + grid.t() ** 2) / (2 * sigma ** 2))
+    kernel /= kernel.sum()
+    return kernel
+
+def gaussian_blur(image, kernel_size=5, sigma=1):
+    """Applies Gaussian blur to an image."""
+    channels = image.shape[1]
+    kernel = gaussian_kernel(kernel_size, sigma, image.device)
+    # Reshape to 2d depthwise convolutional weight
+    kernel = kernel.view(1, 1, kernel_size, kernel_size)
+    kernel = kernel.repeat(channels, 1, 1, 1)
+    padding = kernel_size // 2
+    blurred_image = F.conv2d(image, kernel, padding=padding, groups=channels)
+    return blurred_image
+    
 def convert_idx_masks_to_bool(masks):
     """
     input: masks (1, img_dim1, img_dim2)
@@ -505,6 +525,10 @@ class SOPConfig:
                  group_gen_temp_alpha: int = None,
                  group_gen_temp_beta: int = None,
                  group_sel_scale: int = None,
+                 group_gen_blur_ks1: int = None,
+                 group_gen_blur_sigma1: int = None,
+                 group_gen_blur_ks2: int = None,
+                 group_gen_blur_sigma2: int = None,
                 #  group_gen_scale_sigmoid: int = None,
                 #  group_gen_scale_sigmoid_log: int = None,
                 #  group_gen_scale_sigmoid_mode: str = None,
@@ -529,6 +553,10 @@ class SOPConfig:
         self.group_gen_temp_alpha = 1
         self.group_gen_temp_beta = 1
         self.group_sel_scale = 1
+        self.group_gen_blur_ks1 = -1
+        self.group_gen_blur_sigma1 = -1
+        self.group_gen_blur_ks2 = -1
+        self.group_gen_blur_sigma2 = -1
         # self.group_gen_scale_sigmoid = -1
         # self.group_gen_scale_sigmoid_log = -1
         # self.group_gen_scale_sigmoid_mode = 'median' # or '0.5'
@@ -571,6 +599,14 @@ class SOPConfig:
             assert group_gen_temp_beta > 0
         if group_sel_scale is not None:
             self.group_sel_scale = group_sel_scale
+        if group_gen_blur_ks1 is not None:
+            self.group_gen_blur_ks1 = group_gen_blur_ks1
+        if group_gen_blur_sigma1 is not None:
+            self.group_gen_blur_sigma1 = group_gen_blur_sigma1
+        if group_gen_blur_ks2 is not None:
+            self.group_gen_blur_ks2 = group_gen_blur_ks2
+        if group_gen_blur_sigma2 is not None:
+            self.group_gen_blur_sigma2 = group_gen_blur_sigma2
         # if group_gen_scale_sigmoid is not None:
         #     self.group_gen_scale_sigmoid = group_gen_scale_sigmoid
         # if group_gen_scale_sigmoid_log is not None:
@@ -603,6 +639,10 @@ class SOPConfig:
             'group_gen_temp_alpha',
             'group_gen_temp_beta',
             'group_sel_scale',
+            'group_gen_blur_ks1',
+            'group_gen_blur_sigma1',
+            'group_gen_blur_ks2',
+            'group_gen_blur_sigma2',
             # 'group_gen_scale_sigmoid',
             # 'group_gen_scale_sigmoid_log',
             # 'group_gen_scale_sigmoid_mode',
@@ -639,6 +679,10 @@ class SOP(nn.Module):
         # self.group_gen_scale_sigmoid_log = config.group_gen_scale_sigmoid_log if hasattr(config, 'group_gen_scale_sigmoid_log') else -1
         self.group_sel_scale = config.group_sel_scale if hasattr(config, 'group_sel_scale') else 1
         # self.group_gen_scale_sigmoid_mode = config.group_gen_scale_sigmoid_mode if hasattr(config, 'group_gen_scale_sigmoid_mode') else 'median'
+        self.group_gen_blur_ks1 = config.group_gen_blur_ks1 if hasattr(config, 'group_gen_blur_ks1') else -1
+        self.group_gen_blur_sigma1 = config.group_gen_blur_sigma1 if hasattr(config, 'group_gen_blur_sigma1') else -1
+        self.group_gen_blur_ks2 = config.group_gen_blur_ks2 if hasattr(config, 'group_gen_blur_ks2') else -1
+        self.group_gen_blur_sigma2 = config.group_gen_blur_sigma2 if hasattr(config, 'group_gen_blur_sigma2') else -1
 
         # blackbox model and finetune layers
         self.blackbox_model = backbone_model
@@ -843,10 +887,20 @@ class SOPImage(SOP):
                                                         img_dim1 * img_dim2).max(dim=-1).values
         input_mask_weights_cand = input_mask_weights_cand * scale_factor.view(bsz, -1,1,1)
 
+        if self.group_gen_blur_ks1 != -1 and self.group_gen_blur_sigma1 != -1:
+            input_mask_weights_cand = gaussian_blur(input_mask_weights_cand, 
+                                                    self.group_gen_blur_ks1, 
+                                                    self.group_gen_blur_sigma1)
+
         # temperature scaling to make the mask weights closer to 0 or 1
         input_mask_weights_cand = torch.sigmoid(torch.log(input_mask_weights_cand / \
             self.group_gen_temp_beta + EPS) / self.group_gen_temp_alpha)
-        
+
+        if self.group_gen_blur_ks2 != -1 and self.group_gen_blur_sigma2 != -1:
+            input_mask_weights_cand = gaussian_blur(input_mask_weights_cand, 
+                                                    self.group_gen_blur_ks2, 
+                                                    self.group_gen_blur_sigma2)
+
         if binary_threshold != -1 and not self.training: # if binary threshold is set, then use binary mask above the threshold only for testing
             input_mask_weights_cand = (input_mask_weights_cand > binary_threshold).float()
 
@@ -892,7 +946,7 @@ class SOPImage(SOP):
         mask_weights_sort = (outputs.mask_weights * outputs.logits_all)[i,pred_mask_idxs_sort,pred]
         masks_sort = outputs.masks[0,pred_mask_idxs_sort]
         masks_sort_used = (masks_sort[mask_weights_sort != 0] > masks_sort[mask_weights_sort != 0].mean()).int()
-        mask_weights_sort_used = mask_weights_sort[mask_weights_sort > 0]
+        mask_weights_sort_used = mask_weights_sort[mask_weights_sort != 0]
         return {
             'masks_sort_used': masks_sort_used, 
             'mask_weights_sort_used': mask_weights_sort_used
@@ -947,6 +1001,130 @@ class SOPImageCls(SOPImage):
                                     masks_aggr,
                                     flat_masks,
                                     grouped_attributions)
+
+
+
+def default_projection_func(blackbox_model, inputs):
+    # This is an example projection function. Customize as needed.
+    projected_inputs = blackbox_model.model(inputs, output_hidden_states=True).hidden_states[-2][:,1:].transpose(1,2)
+    num_patch = 14  # Example patch size. Customize as needed.
+    projected_inputs = projected_inputs.reshape(-1, 
+                                                blackbox_model.model.config.hidden_size, num_patch, num_patch)
+    return projected_inputs
+
+
+class SOPImageCls2(SOPImageCls):
+    # def __init__(self, 
+    #              config,
+    #              blackbox_model,
+    #              class_weights=None,
+    #              projection_layer=None,
+    #              ):
+    #     super().__init__(config,
+    #                         blackbox_model,
+    #                         class_weights,
+    #                         projection_layer
+    #                         )
+    def __init__(self, 
+                 config,
+                 blackbox_model,
+                 class_weights=None,
+                 projection_layer=None,
+                 projection_func=default_projection_func
+                 ):
+        super().__init__(config,
+                            blackbox_model,
+                            class_weights
+                            )
+        self.group_gen_blur_ks1 = config.group_gen_blur_ks1
+        self.group_gen_blur_sigma1 = config.group_gen_blur_sigma1
+        
+        self.input_attn = GroupGenerateLayerBlur(hidden_dim=self.input_hidden_size,
+                                             num_heads=self.num_heads,
+                                             scale=self.group_gen_scale,
+                                             kernel_size=config.group_gen_blur_ks1,
+                                             sigma=config.group_gen_blur_sigma1
+                                                )
+        
+        self.image_size = config.image_size if isinstance(config.image_size, 
+                                                    collections.abc.Iterable) \
+                                            else (config.image_size, config.image_size)
+        self.num_channels = config.num_channels
+        # attention args
+        self.attn_patch_size = config.attn_patch_size
+        
+        self.init_grads()
+        
+        for name, param in self.projection.named_parameters():
+            param.requires_grad = False
+            
+        self.projection_func = projection_func
+        
+    def group_generate(self, inputs, epoch, mask_batch_size, segs=None, binary_threshold=-1):
+        bsz, num_channel, img_dim1, img_dim2 = inputs.shape
+        if segs is None:   # should be renamed "segments"
+            # projected_inputs = self.projection(inputs)
+            # new
+            num_patch = 14
+            # TODO: how to write this in a general way? 
+            # I would like to pass it in as a function, but I need it to rely on blackbox_model,
+            # which does not always have the processing steps like this.
+            # projected_inputs = self.blackbox_model.model(inputs, output_hidden_states=True).hidden_states[-2][:,1:].transpose(1,2).reshape(-1, 
+            #                 self.config.hidden_size, num_patch, num_patch)
+            projected_inputs = self.projection_func(self.blackbox_model, inputs)
+            # new over
+            num_patches = projected_inputs.shape[-2:]
+            projected_inputs = projected_inputs.flatten(2).transpose(1, 2)  # bsz, img_dim1 * img_dim2, num_channel
+            projected_inputs = projected_inputs * self.projected_input_scale
+
+            if self.num_masks_max != -1:
+                input_dropout_idxs = torch.randperm(projected_inputs.shape[1])[:self.num_masks_max]
+                projected_query = projected_inputs[:, input_dropout_idxs]
+            else:
+                projected_query = projected_inputs
+            input_mask_weights_cand = self.input_attn(projected_query, projected_inputs, epoch=epoch)
+            
+            input_mask_weights_cand = input_mask_weights_cand.reshape(-1, 1, num_patches[0], num_patches[1])
+            input_mask_weights_cand = torch.nn.functional.interpolate(input_mask_weights_cand, size=(img_dim1, img_dim2), mode='nearest')
+            
+            input_mask_weights_cand = input_mask_weights_cand.view(bsz, -1, img_dim1, img_dim2)
+            # input_mask_weights_cand = torch.clip(input_mask_weights_cand, max=1.0)
+        else:
+            # With/without masks are a bit different. Should we make them the same? Need to experiment.
+            bsz, num_segs, img_dim1, img_dim2 = segs.shape
+            seged_output_0 = inputs.unsqueeze(1) * segs.unsqueeze(2) # (bsz, num_masks, num_channel, img_dim1, img_dim2)
+            # import pdb; pdb.set_trace()
+            _, interm_outputs = self.run_backbone(seged_output_0, mask_batch_size)
+            
+            interm_outputs = interm_outputs.view(bsz, -1, self.hidden_size)
+            interm_outputs = interm_outputs * self.projected_input_scale
+            segment_mask_weights = self.input_attn(interm_outputs, interm_outputs, epoch=epoch)
+            segment_mask_weights = segment_mask_weights.reshape(bsz, -1, num_segs)
+            
+            new_masks =  segs.unsqueeze(1) * segment_mask_weights.unsqueeze(-1).unsqueeze(-1)
+            # (bsz, num_new_masks, num_masks, img_dim1, img_dim2)
+            input_mask_weights_cand = new_masks.sum(2)  # if one mask has it, then have it
+            # todo: Can we simplify the above to be dot product?
+            
+            
+        scale_factor = 1.0 / input_mask_weights_cand.reshape(bsz, -1, 
+                                                        img_dim1 * img_dim2).max(dim=-1).values
+        input_mask_weights_cand = input_mask_weights_cand * scale_factor.view(bsz, -1,1,1)
+        
+        if self.training:
+            dropout_idxs = torch.randperm(input_mask_weights_cand.shape[1])[:self.num_masks_sample]
+            dropout_mask = torch.zeros(bsz, input_mask_weights_cand.shape[1]).to(inputs.device)
+            dropout_mask[:,dropout_idxs] = 1
+        else:
+            dropout_mask = torch.ones(bsz, input_mask_weights_cand.shape[1]).to(inputs.device)
+        
+        input_mask_weights = input_mask_weights_cand[dropout_mask.bool()].clone()
+        input_mask_weights = input_mask_weights.view(bsz, -1, img_dim1, img_dim2)
+
+        masked_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2)
+        # import pdb; pdb.set_trace()
+        # print('input_mask_weights', input_mask_weights.min(), input_mask_weights.max())
+        return masked_inputs, input_mask_weights
     
 
 class SOPImageSeg(SOPImage):
@@ -1004,6 +1182,172 @@ class SOPImageSeg(SOPImage):
                                     flat_masks,
                                     grouped_attributions)
 
+
+def gaussian_kernel(size, sigma, device):
+    """Generates a 2D Gaussian kernel."""
+    coords = torch.tensor([(x - size // 2) for x in range(size)]).to(device)
+    grid = coords.unsqueeze(0).repeat(size, 1)
+    kernel = torch.exp(-(grid ** 2 + grid.t() ** 2) / (2 * sigma ** 2))
+    kernel /= kernel.sum()
+    return kernel
+
+def gaussian_blur(image, kernel_size=5, sigma=1):
+    """Applies Gaussian blur to an image."""
+    channels = image.shape[1]
+    kernel = gaussian_kernel(kernel_size, sigma, image.device)
+    # Reshape to 2d depthwise convolutional weight
+    kernel = kernel.view(1, 1, kernel_size, kernel_size)
+    kernel = kernel.repeat(channels, 1, 1, 1)
+    padding = kernel_size // 2
+    blurred_image = F.conv2d(image, kernel, padding=padding, groups=channels)
+    return blurred_image
+
+
+class SparseMultiHeadedAttentionBlur(nn.Module):
+    ''' Implement a multi-headed attention module '''
+    def __init__(self, embed_dim, num_heads=1, scale=1, kernel_size=1, sigma=1):
+        ''' Initialize the attention module '''
+        super().__init__()
+
+        # ensure valid inputs
+        assert embed_dim % num_heads == 0, \
+            f'num_heads={num_heads} should evenly divide embed_dim={embed_dim}'
+
+        # store off the scale and input params
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.projection_dim = embed_dim // num_heads
+        self.scale = scale
+        self.kernel_size = kernel_size
+        self.sigma = sigma
+        # self.scale = self.projection_dim ** -0.5
+
+        # Combine projections for multiple heads into a single linear layer for efficiency
+        self.input_weights = nn.Parameter(torch.Tensor(3 * embed_dim, embed_dim))
+        self.output_projection = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.sparsemax = Sparsemax(dim=-1)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        ''' Reset parameters using xavier initialization '''
+        # Initialize using Xavier
+        gain = nn.init.calculate_gain('linear')
+        nn.init.xavier_uniform_(self.input_weights, gain)
+        nn.init.xavier_uniform_(self.output_projection.weight, gain)
+
+    def project(self, inputs, index=0, chunks=1):
+        ''' Produce a linear projection using the weights '''
+        batch_size = inputs.shape[0]
+        start = index * self.embed_dim
+        end = start + chunks * self.embed_dim
+        # import pdb; pdb.set_trace()
+        projections = F.linear(inputs, self.input_weights[start:end]).chunk(chunks, dim=-1)
+
+        output_projections = []
+        for projection in projections:
+            # transform projection to (BH x T x E)
+            output_projections.append(
+                projection.view(
+                    batch_size,
+                    -1,
+                    self.num_heads,
+                    self.projection_dim
+                ).transpose(2, 1).contiguous().view(
+                    batch_size * self.num_heads,
+                    -1,
+                    self.projection_dim
+                )
+            )
+
+        return output_projections
+
+    def attention(self, queries, keys, values):
+        ''' Scaled dot product attention with optional masks '''
+        logits = self.scale * torch.bmm(queries, keys.transpose(2, 1))
+
+        # attended = torch.bmm(F.softmax(logits, dim=-1), values)
+        # print('logits', logits.shape)
+        # import pdb; pdb.set_trace()
+        num_patches = int(math.sqrt(logits.shape[-1]))
+        bsz, num_groups, _ = logits.shape
+        logits_reshape = logits.view(bsz, num_groups, num_patches, num_patches)
+        # print('logits_reshape', logits_reshape.shape)
+        logits_reshape_blurred = gaussian_blur(logits_reshape, self.kernel_size, self.sigma)
+        # print('logits_reshape_blurred', logits_reshape_blurred.shape)
+        attn_weights = self.sparsemax(logits_reshape_blurred.flatten(-2))
+        # attn_weights_raw = self.sparsemax(logits)
+        # import matplotlib.pyplot as plt
+        # plt.figure()
+        # plt.imshow(attn_weights[0][0].view(num_patches, num_patches).cpu())
+        # plt.show()
+        # plt.figure()
+        # plt.imshow(attn_weights_raw[0][0].view(num_patches, num_patches).cpu())
+        # plt.show()
+        # import pdb; pdb.set_trace()
+        return attn_weights
+
+    def forward(self, queries, keys, values):
+        ''' Forward pass of the attention '''
+        # pylint:disable=unbalanced-tuple-unpacking
+        if same_tensor(values, keys, queries):
+            values, keys, queries = self.project(values, chunks=3)
+        elif same_tensor(values, keys):
+            values, keys = self.project(values, chunks=2)
+            queries, = self.project(queries, 2)
+        else:
+            values, = self.project(values, 0)
+            keys, = self.project(keys, 1)
+            queries, = self.project(queries, 2)
+
+        attn_weights = self.attention(queries, keys, values)
+        return attn_weights
+
+
+class GroupGenerateLayerBlur(nn.Module):
+    def __init__(self, hidden_dim, num_heads, scale=1, kernel_size=1, sigma=1):
+        super().__init__()
+        
+        self.hidden_dim = hidden_dim
+        self.num_heads = num_heads
+        self.scale = scale
+        self.kernel_size = kernel_size
+        self.sigma = sigma
+       
+        self.multihead_attns = nn.ModuleList([SparseMultiHeadedAttentionBlur(hidden_dim, 
+                                                                             scale=scale,
+                                                                             kernel_size=kernel_size,
+                                                                             sigma=sigma) \
+                                                for _ in range(num_heads)])
+
+    def forward(self, query, key_value, epoch=0):
+        """
+            Use multiheaded attention to get mask
+            Num_interpretable_heads = num_heads * seq_len
+            Input: x (bsz, seq_len, hidden_dim)
+                   if actual_x is not None, then use actual_x instead of x to compute attn_output
+            Output: attn_outputs (bsz, num_heads * seq_len, seq_len, hidden_dim)
+                    mask (bsz, num_heads, seq_len, seq_len)
+        """
+
+        if epoch == -1:
+            epoch = self.num_heads
+        
+        head_i = epoch % self.num_heads
+        if self.training:
+            attn_weights = self.multihead_attns[head_i](query, key_value, key_value)
+        else:
+            attn_weights = []
+            if epoch < self.num_heads:
+                num_heads_use = head_i + 1
+            else:
+                num_heads_use = self.num_heads
+            for head_j in range(num_heads_use):
+                attn_weights_j = self.multihead_attns[head_j](query, key_value, key_value)
+                attn_weights.append(attn_weights_j)
+            attn_weights = torch.stack(attn_weights, dim=1)
+        # import pdb; pdb.set_trace()
+        # attn_weights = 
+        return attn_weights
 
 class SOPText(SOP):
     def __init__(self, 

@@ -9,7 +9,6 @@ from .common import *
 def explain_image_cls_with_shap(model, x, t, mask_value, shap_explainer_kwargs):
     assert len(x) == len(t)
     device = next(model.parameters()).device
-    print('device', device)
 
     def f(x_np):
         with torch.no_grad():
