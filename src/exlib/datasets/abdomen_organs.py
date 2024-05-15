@@ -42,7 +42,8 @@ class AbdomenOrgans(Dataset):
          train_angle_max: float = 60.0,
          image_transforms = None,
          label_transforms = None,
-         download: bool = False
+         download: bool = False,
+         gen_seed: int = 1234
     ):
         if download:
             raise ValueError("download not implemented")
@@ -58,18 +59,20 @@ class AbdomenOrgans(Dataset):
         assert split in SPLIT_TYPES
         self.split = split
 
+        gen = torch.Generator()
+        gen.manual_seed(gen_seed)
+        perm = torch.randperm(num_all, generator=gen)
+
         # Split not regarding video
         if split == "train_frame" or split == "test_frame":
             all_image_files = sorted(os.listdir(self.images_dir))
             num_all, num_train = len(all_image_files), int(len(all_image_files) * train_ratio)
-            perm = torch.randperm(num_all)
             idxs = perm[:num_train] if split.startswith("train") else perm[num_train:]
             self.image_files = sorted([all_image_files[i] for i in idxs])
 
         # Split by the video source
         elif split == "train_video" or split == "test_video":
             num_all, num_train = len(VIDEO_GLOBS), int(len(VIDEO_GLOBS) * train_ratio)
-            perm = torch.randperm(num_all)
             idxs = perm[:num_train] if "train_frame" in split else perm[num_train:]
 
             image_files = []
