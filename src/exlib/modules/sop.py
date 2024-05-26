@@ -17,6 +17,9 @@ from collections import namedtuple
 import os
 import math
 
+import collections
+import torchvision
+
 EPS = 1e-8
 
 AttributionOutputSOP = namedtuple("AttributionOutputSOP", 
@@ -722,10 +725,10 @@ class SOP(nn.Module):
         for name, param in self.blackbox_model.named_parameters():
             param.requires_grad = False
 
-        for finetune_layer in self.finetune_layers:
-            # todo: check if this works with index
-            for name, param in get_chained_attr(self.blackbox_model, finetune_layer).named_parameters():
-                param.requires_grad = True
+        # for finetune_layer in self.finetune_layers:
+        #     # todo: check if this works with index
+        #     for name, param in get_chained_attr(self.blackbox_model, finetune_layer).named_parameters():
+        #         param.requires_grad = True
 
     def forward(self):
         raise NotImplementedError
@@ -1348,6 +1351,329 @@ class GroupGenerateLayerBlur(nn.Module):
         # import pdb; pdb.set_trace()
         # attn_weights = 
         return attn_weights
+
+
+# neurips
+
+class SparseMultiHeadedAttentionBlur(nn.Module):
+    ''' Implement a multi-headed attention module '''
+    def __init__(self, embed_dim, num_heads=1, scale=1, kernel_size=1, sigma=1):
+        ''' Initialize the attention module '''
+        super().__init__()
+
+        # ensure valid inputs
+        assert embed_dim % num_heads == 0, \
+            f'num_heads={num_heads} should evenly divide embed_dim={embed_dim}'
+
+        # store off the scale and input params
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.projection_dim = embed_dim // num_heads
+        self.scale = scale
+        self.kernel_size = kernel_size
+        self.sigma = sigma
+        # self.scale = self.projection_dim ** -0.5
+
+        # Combine projections for multiple heads into a single linear layer for efficiency
+        self.input_weights = nn.Parameter(torch.Tensor(3 * embed_dim, embed_dim))
+        self.output_projection = nn.Linear(embed_dim, embed_dim, bias=False)
+        # self.sparsemax = Sparsemax(dim=-1)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        ''' Reset parameters using xavier initialization '''
+        # Initialize using Xavier
+        gain = nn.init.calculate_gain('linear')
+        nn.init.xavier_uniform_(self.input_weights, gain)
+        nn.init.xavier_uniform_(self.output_projection.weight, gain)
+
+    def project(self, inputs, index=0, chunks=1):
+        ''' Produce a linear projection using the weights '''
+        batch_size = inputs.shape[0]
+        start = index * self.embed_dim
+        end = start + chunks * self.embed_dim
+        # import pdb; pdb.set_trace()
+        projections = F.linear(inputs, self.input_weights[start:end]).chunk(chunks, dim=-1)
+
+        output_projections = []
+        for projection in projections:
+            # transform projection to (BH x T x E)
+            output_projections.append(
+                projection.view(
+                    batch_size,
+                    -1,
+                    self.num_heads,
+                    self.projection_dim
+                ).transpose(2, 1).contiguous().view(
+                    batch_size * self.num_heads,
+                    -1,
+                    self.projection_dim
+                )
+            )
+
+        return output_projections
+
+    def attention(self, queries, keys, values):
+        ''' Scaled dot product attention with optional masks '''
+        logits = self.scale * torch.bmm(queries, keys.transpose(2, 1))
+
+        num_patches = int(math.sqrt(logits.shape[-1]))
+        bsz, num_groups, _ = logits.shape
+        logits_reshape = logits.view(bsz, num_groups, num_patches, num_patches)
+        logits_reshape_blurred = torchvision.transforms.functional.gaussian_blur(logits_reshape, self.kernel_size, self.sigma)
+        attn_weights = F.softmax(logits_reshape_blurred.flatten(-2), dim=-1)
+        return attn_weights
+
+    def forward(self, queries, keys, values):
+        ''' Forward pass of the attention '''
+        # pylint:disable=unbalanced-tuple-unpacking
+        if same_tensor(values, keys, queries):
+            values, keys, queries = self.project(values, chunks=3)
+        elif same_tensor(values, keys):
+            values, keys = self.project(values, chunks=2)
+            queries, = self.project(queries, 2)
+        else:
+            values, = self.project(values, 0)
+            keys, = self.project(keys, 1)
+            queries, = self.project(queries, 2)
+
+        attn_weights = self.attention(queries, keys, values)
+        return attn_weights
+
+
+class GroupGenerateLayerBlur(nn.Module):
+    def __init__(self, hidden_dim, num_heads, scale=1, kernel_size=1, sigma=1):
+        super().__init__()
+        
+        self.hidden_dim = hidden_dim
+        self.num_heads = num_heads
+        self.scale = scale
+        self.kernel_size = kernel_size
+        self.sigma = sigma
+       
+        self.multihead_attns = nn.ModuleList([SparseMultiHeadedAttentionBlur(hidden_dim, 
+                                                                             scale=scale,
+                                                                             kernel_size=kernel_size,
+                                                                             sigma=sigma) \
+                                                for _ in range(num_heads)])
+
+    def forward(self, query, key_value, epoch=0):
+        """
+            Use multiheaded attention to get mask
+            Num_interpretable_heads = num_heads * seq_len
+            Input: x (bsz, seq_len, hidden_dim)
+                   if actual_x is not None, then use actual_x instead of x to compute attn_output
+            Output: attn_outputs (bsz, num_heads * seq_len, seq_len, hidden_dim)
+                    mask (bsz, num_heads, seq_len, seq_len)
+        """
+
+        if epoch == -1:
+            epoch = self.num_heads
+        
+        head_i = epoch % self.num_heads
+        if self.training:
+            attn_weights = self.multihead_attns[head_i](query, key_value, key_value)
+        else:
+            attn_weights = []
+            if epoch < self.num_heads:
+                num_heads_use = head_i + 1
+            else:
+                num_heads_use = self.num_heads
+            for head_j in range(num_heads_use):
+                attn_weights_j = self.multihead_attns[head_j](query, key_value, key_value)
+                attn_weights.append(attn_weights_j)
+            attn_weights = torch.stack(attn_weights, dim=1)
+        # import pdb; pdb.set_trace()
+        # attn_weights = 
+        return attn_weights
+
+class GroupSelectLayerPower(nn.Module):
+    def __init__(self, hidden_dim, scale=1, proj=None):
+        super().__init__()
+        
+        self.hidden_dim = hidden_dim
+        self.proj = copy.deepcopy(proj)
+        self.multihead_attn = SparseMultiHeadedAttention(hidden_dim, scale=scale)
+        self.scale = scale
+        
+        embed_dim = self.multihead_attn.embed_dim
+        identity_matrix = torch.eye(embed_dim)
+        self.multihead_attn.input_weights.data = identity_matrix[None].expand(3, embed_dim, embed_dim).reshape(-1, embed_dim)
+
+    def forward(self, query, key, value):
+        """
+            Use multiheaded attention to get mask
+            Num_heads = num_heads * seq_len
+            Input: x (bsz, seq_len, hidden_dim)
+                   if actual_x is not None, then use actual_x instead of x to compute attn_output
+            Output: attn_outputs (bsz, num_heads * seq_len, seq_len, hidden_dim)
+                    mask (bsz, num_heads, seq_len, seq_len)
+        """
+        # x shape: (batch_size, sequence_length, hidden_dim)
+        # x shape: (..., hidden_dim)
+        if self.proj is not None:
+            # query = self.proj(query) # query is the class weights, which doesn't need to use the last layer to encode. maybe it can be encoded with other ways
+            # print('key a', key.shape)
+            key = self.proj(key)[0]
+            # print('key b', key.shape)
+            
+        epsilon = 1e-30
+        # import pdb; pdb.set_trace()
+        bsz, seq_len, hidden_dim = query.shape
+
+        # Obtain attention weights
+        attn_weights = self.multihead_attn(query, key, key)
+        mask = attn_weights.transpose(-1, -2)
+
+        # Apply attention weights on what to be attended
+        new_shape = list(mask.shape) + [1] * (len(value.shape) - 3)
+        attn_outputs = (value * mask.view(*new_shape)).sum(1)
+
+        # attn_outputs of shape (bsz, num_masks, num_classes)
+        return attn_outputs, mask
+    
+    
+class SOPImageCls4(SOPImageCls):
+    
+    def __init__(self, 
+                 config,
+                 blackbox_model,
+                 class_weights=None,
+                 projection_layer=None,
+                 k=0.2,
+                 group_selector_proj=None
+                 ):
+        super().__init__(config,
+                            blackbox_model,
+                            class_weights,
+                            projection_layer
+                            )
+        self.group_gen_blur_ks1 = config.group_gen_blur_ks1
+        self.group_gen_blur_sigma1 = config.group_gen_blur_sigma1
+        
+        self.input_attn = GroupGenerateLayerBlur(hidden_dim=self.input_hidden_size,
+                                             num_heads=self.num_heads,
+                                             scale=self.group_gen_scale,
+                                             kernel_size=config.group_gen_blur_ks1,
+                                             sigma=config.group_gen_blur_sigma1
+                                                )
+        self.output_attn = GroupSelectLayerPower(hidden_dim=self.hidden_size,
+                                            scale=self.group_sel_scale,
+                                            proj=group_selector_proj)
+        
+        self.image_size = config.image_size if isinstance(config.image_size, 
+                                                    collections.abc.Iterable) \
+                                            else (config.image_size, config.image_size)
+        self.num_channels = config.num_channels
+        # attention args
+        self.attn_patch_size = config.attn_patch_size
+        
+        self.init_grads()
+        
+        for name, param in self.projection.named_parameters():
+            param.requires_grad = True
+            
+        self.k = k
+            
+        # self.projection_func = projection_func
+        
+    def forward(self, 
+                inputs, 
+                segs=None, 
+                input_mask_weights=None,
+                epoch=-1, 
+                mask_batch_size=16,
+                label=None,
+                return_tuple=False,
+                binary_threshold=-1):
+        if epoch == -1:
+            epoch = self.num_heads
+        bsz, num_channel, img_dim1, img_dim2 = inputs.shape
+        
+        # Mask (Group) generation
+        if input_mask_weights is None:
+            grouped_inputs, input_mask_weights, c = self.group_generate(inputs, epoch, mask_batch_size, segs, binary_threshold)
+        else:
+            grouped_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2) # directly apply mask
+
+        # Backbone model
+        logits, pooler_outputs = self.run_backbone(grouped_inputs, mask_batch_size)
+        if c is not None:
+            logits = logits * c[:,:,None,None]
+
+        # Mask (Group) selection & aggregation
+        weighted_logits, output_mask_weights, logits, pooler_outputs = self.group_select(logits, pooler_outputs, img_dim1, img_dim2)
+        
+        if return_tuple:
+            return self.get_results_tuple(weighted_logits, logits, pooler_outputs, input_mask_weights, output_mask_weights, bsz, label)
+        else:
+            return weighted_logits
+    
+    def group_generate(self, inputs, epoch, mask_batch_size, segs=None, binary_threshold=-1):
+        bsz, num_channel, img_dim1, img_dim2 = inputs.shape
+        c = None
+        if segs is None:   # should be renamed "segments"
+            num_patch = 14
+            projected_inputs = self.projection(inputs)
+            num_patches = projected_inputs.shape[-2:]
+            projected_inputs = projected_inputs.flatten(2).transpose(1, 2)  # bsz, img_dim1 * img_dim2, num_channel
+            projected_inputs = projected_inputs * self.projected_input_scale
+
+            if self.num_masks_max != -1:
+                projected_query = projected_inputs[:, :self.num_masks_max]
+            else:
+                projected_query = projected_inputs
+            input_mask_weights_cand = self.input_attn(projected_query, projected_inputs, epoch=epoch)
+            
+            input_mask_weights_cand = input_mask_weights_cand.reshape(-1, num_patches[0]*num_patches[1])
+            input_mask_weights_sort = input_mask_weights_cand.sort(-1)
+            input_mask_weights_sort_values = input_mask_weights_sort.values.flip(-1)
+            input_mask_weights_sort_indices = input_mask_weights_sort.indices.flip(-1)
+
+            # get k scale
+            topk = int(input_mask_weights_sort_values.shape[-1] * self.k)
+            pos = input_mask_weights_sort_values[:,:topk]
+            neg = input_mask_weights_sort_values[:,topk:]
+            c = pos.sum(-1) - neg.sum(-1)
+            c = c.view(bsz, -1)
+
+            masks_all = torch.zeros_like(input_mask_weights_cand)
+            masks_all[torch.arange(masks_all.size(0)).unsqueeze(1), input_mask_weights_sort_indices[:, :topk]] = 1
+            masks_all = masks_all.view(bsz, -1, *num_patches)
+            masks_all = torch.nn.functional.interpolate(masks_all, size=(img_dim1, img_dim2), mode='nearest')
+            input_mask_weights_cand = masks_all
+        else:
+            # With/without masks are a bit different. Should we make them the same? Need to experiment.
+            bsz, num_segs, img_dim1, img_dim2 = segs.shape
+            seged_output_0 = inputs.unsqueeze(1) * segs.unsqueeze(2) # (bsz, num_masks, num_channel, img_dim1, img_dim2)
+            _, interm_outputs = self.run_backbone(seged_output_0, mask_batch_size)
+            
+            interm_outputs = interm_outputs.view(bsz, -1, self.hidden_size)
+            interm_outputs = interm_outputs * self.projected_input_scale
+            segment_mask_weights = self.input_attn(interm_outputs, interm_outputs, epoch=epoch)
+            segment_mask_weights = segment_mask_weights.reshape(bsz, -1, num_segs)
+            
+            new_masks =  segs.unsqueeze(1) * segment_mask_weights.unsqueeze(-1).unsqueeze(-1)
+            input_mask_weights_cand = new_masks.sum(2)  # if one mask has it, then have it
+            
+            
+        scale_factor = 1.0 / input_mask_weights_cand.reshape(bsz, -1, 
+                                                        img_dim1 * img_dim2).max(dim=-1).values
+        input_mask_weights_cand = input_mask_weights_cand * scale_factor.view(bsz, -1,1,1)
+        
+        # dropout
+        dropout_mask = torch.zeros(bsz, input_mask_weights_cand.shape[1]).to(inputs.device)
+        keep_group_idxs = torch.arange(self.num_masks_sample) * input_mask_weights_cand.shape[1] // self.num_masks_sample
+        dropout_mask[:, keep_group_idxs] = 1
+        if c is not None:
+            c = c[dropout_mask.bool()].view(bsz, -1)
+        
+        input_mask_weights = input_mask_weights_cand[dropout_mask.bool()].clone()
+        input_mask_weights = input_mask_weights.view(bsz, -1, img_dim1, img_dim2)
+
+        masked_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2)
+        return masked_inputs, input_mask_weights, c
+
 
 class SOPText(SOP):
     def __init__(self, 

@@ -46,8 +46,10 @@ class ArchipelagoImageCls(FeatureAttrMethod):
             baseline = np.zeros_like(image)
             if self.segmenter == 'quickshift':
                 segments = quickshift(image, kernel_size=3, max_dist=300, ratio=0.2)
-            else:
+            elif self.segmenter == 'patch':
                 segments = patch_segmenter(image, sz=(8,8))
+            else:
+                segments = self.segmenter(image)
 
             xf = ImageXformer(image, baseline, segments)
 
