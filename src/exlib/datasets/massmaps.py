@@ -108,8 +108,9 @@ class MassMapsConvnetForImageRegression(PreTrainedModel):
         )
 
 
-class MassMapsMetrics(nn.Module):
-    def __init__(self, void_threshold=0, cluster_threshold=3):
+class MassMapsAlignment(nn.Module):
+    def __init__(self, void_threshold=0, cluster_threshold=3, 
+                 void_scale=1, cluster_scale=1):
         super().__init__()
         self.void_threshold = void_threshold
         self.cluster_threshold = cluster_threshold
@@ -119,24 +120,36 @@ class MassMapsMetrics(nn.Module):
             'void': 1,
             'cluster': 2
         }
+        self.void_scale = void_scale
+        self.cluster_scale = cluster_scale
         
-    def forward(self, zp, x):
+    def forward(self, zp, x, reduce='sum'):
         """
-        zp: (N, M, H, W)
+        zp: (N, M, H, W) 0 or 1, or bool
         x: image (N, 1, H, W)
+        return 
         """
+        assert reduce in ['sum', 'none']
         # metric test
+        zp = zp.bool().float() # if float then turned into bool
         masked_imgs = zp * x # (N, M, H, W)
-        sigma = x.flatten(2).std(dim=-1)
-        mask_intensities = (masked_imgs * (zp > 1e-4)).flatten(2).sum(-1) /  (zp > 1e-4).flatten(2).sum(-1)
-        num_masks = (zp > 1e-4).flatten(2).sum(-1).bool().sum(-1)
-        voids = (mask_intensities < self.void_threshold * sigma)
-        num_voids = voids.sum(-1)
-        clusters = (mask_intensities > self.cluster_threshold * sigma)
-        num_clusters = clusters.sum(-1)
-        perc_semantic = (num_voids + num_clusters) / num_masks
-        semantic = voids.logical_or(clusters)
-        semantic_coverage = (zp * semantic[:,:,None,None]).sum(1).flatten(1).bool().sum(-1) / x.flatten(1).shape[-1]
-        sem_cov_weighted_perc_sem_groups = perc_semantic * semantic_coverage
+        sigma = x.flatten(2).std(dim=-1) # (N, M)
+        mask_masses = (masked_imgs * zp).flatten(2).sum(-1)
+        img_masses = zp.flatten(2).sum(-1)
+        mask_intensities = mask_masses / img_masses
+        mask_sizes = zp.flatten(2).sum(-1) # (N, M)
+        num_masks = mask_sizes.bool().sum(-1) # (N, M)
         
-        return sem_cov_weighted_perc_sem_groups
+        align_void = (masked_imgs < self.void_threshold*sigma[:,:,None,None]).sum([-1,-2]) \
+                        / mask_sizes * (- mask_masses)
+        align_void[mask_sizes.bool().logical_not()] = 0
+        align_void[align_void < 0] = 0
+        align_cluster = (masked_imgs > self.cluster_threshold*sigma[:,:,None,None]).sum([-1,-2]) \
+                        / mask_sizes
+        align_cluster[mask_sizes.bool().logical_not()] = 0
+        align_cluster[align_cluster < 0] = 0
+        
+        if reduce == 'sum':
+            return align_void * self.void_scale + align_cluster * self.cluster_scale
+        else: # none
+            return align_void, align_cluster

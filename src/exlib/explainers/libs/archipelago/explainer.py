@@ -282,8 +282,12 @@ class Archipelago(Explainer):
                 # then we set the numerator to zero
                 # if np.abs(numerator) / np.min(np.abs(np.array([f_a, f_b, f_c, f_d]))) < 1e-5:
                 #     numerator = 0.0
-                numerator[np.abs(numerator) / np.min(np.abs(np.array([f_a, f_b, f_c, f_d]))) < 1e-5] = 0.0
-                    
+                try:
+                    numerator[np.abs(numerator) / np.min(np.abs(np.array([f_a, f_b, f_c, f_d]))) < 1e-5] = 0.0
+                except:
+                    import pdb; pdb.set_trace()
+                    numerator[np.abs(numerator) / np.min(np.abs(np.array([f_a, f_b, f_c, f_d]))) < 1e-5] = 0.0
+
                 # if denominator == 0.0:
                 #     inter_scores[(i, j)] = 0.0
                 # else:

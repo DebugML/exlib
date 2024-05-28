@@ -22,12 +22,12 @@ def explain_image_cls_with_fullgrad(fullgrad, x, label, model_type='vit'):
 class FullGradImageCls(FeatureAttrMethod):
     """ Image classification with integrated gradients
     """
-    def __init__(self, model, model_type='vit', check_completeness=False):
+    def __init__(self, model, im_size=(3, 224, 224), model_type='vit', check_completeness=False):
         super().__init__(model)
         if model_type == 'vit':
-            self.fullgrad = FullGradViT(model, check_completeness=check_completeness)
+            self.fullgrad = FullGradViT(model, im_size=im_size, check_completeness=check_completeness)
         else:
-            self.fullgrad = FullGrad(model, check_completeness=check_completeness)
+            self.fullgrad = FullGrad(model, im_size=im_size, check_completeness=check_completeness)
 
     def forward(self, x, t, **kwargs):
         if not isinstance(t, torch.Tensor):
