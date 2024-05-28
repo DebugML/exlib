@@ -44,14 +44,13 @@ class ChestXDet(Dataset):
         data_dir,
         split: str = "train",
         image_size: int = 1024,
-        gen_seed: int = 1234
     ):
         self.data_dir = data_dir
         assert split in ["train", "test"]
         self.split = split
-        self.images_dir = os.path.join(data_dir, split, "images")
-        self.structure_labels_dir = os.path.join(data_dir, split, "structure_labels")
-        self.disease_labels_dir = os.path.join(data_dir, split, "disease_labels")
+        self.images_dir = os.path.join(data_dir, "data", split, "images")
+        self.structure_labels_dir = os.path.join(data_dir, "data", split, "structure_labels")
+        self.disease_labels_dir = os.path.join(data_dir, "data", split, "disease_labels")
 
         assert os.path.isdir(self.images_dir)
         assert os.path.isdir(self.structure_labels_dir)
