@@ -3,6 +3,7 @@ from collections import namedtuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 
 class FamWrapper(nn.Module):
@@ -73,6 +74,35 @@ def patch_segmenter(image, sz=(8,8)):
     segments = F.interpolate(idx, size=x.size()[:2], mode='nearest').long()
     segments = segments[0,0].numpy()
     return segments
+
+
+def patch_segment(image, patch_height=8, patch_width=8,permute = None,dtype = "torch"):
+    #Input: C,H,W
+    if permute is not None:
+        image = np.transpose(image,permute)
+
+    channels, image_height, image_width = image.shape
+    if image_height % patch_height != 0 or image_width % patch_width != 0:
+        print("patch height and width need to perfectly divide image")
+        raise ValueError
+
+    row_indices = torch.arange(image_height)
+    column_indices = torch.arange(image_width)
+
+    row_factors = row_indices // patch_height
+    column_factors = column_indices // patch_width
+
+    row_factor_matrix = row_factors[:, None]
+    column_factor_matrix = column_factors[None, :]
+
+    segment = column_factor_matrix * (image_height // patch_height) + row_factor_matrix
+    if dtype == "torch":
+        return segment.int()
+    elif dtype == "numpy":
+        return segment.numpy()
+    else:
+        raise ValueError
+
 
 def torch_img_to_np(x): 
     if x.dim() == 4: 

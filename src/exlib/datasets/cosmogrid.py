@@ -17,7 +17,9 @@ class CosmogridDataset(Dataset):
                  labels_filename='y_maps_Cosmogrid_100k.npy',
                  mask_transform=None,
                  num_masks_max=200,
-                 download=False):
+                 download=False,
+                 mask_big_first=False,
+                 even_data_sample=False):
         if download: 
             raise ValueError("download not implemented")
         
@@ -26,8 +28,10 @@ class CosmogridDataset(Dataset):
         self.data_size = data_size
         self.mask_path = mask_path
         if mask_transform is None:
-            mask_transform = get_mask_transform(num_masks_max=num_masks_max)
+            mask_transform = get_mask_transform(num_masks_max=num_masks_max, 
+                                                big_first=mask_big_first)
         self.mask_transform = mask_transform
+        self.even_data_sample = even_data_sample
         # load cosmological parameters -------
         # Omega_m, H0, ns, sigma_8, w, omega_b
         Xvals = np.load(os.path.join(data_dir, inputs_filename), allow_pickle=True)
@@ -83,10 +87,18 @@ class CosmogridDataset(Dataset):
         # print('mode', torch.tensor(self.images).view(-1).mode().values.item())
 
         if data_size != -1:
-            self.images = self.images[:data_size]
-            self.labels = self.labels[:data_size]
-            if self.masks is not None:
-                self.masks = self.masks[:data_size]
+            if not even_data_sample:
+                self.images = self.images[:data_size]
+                self.labels = self.labels[:data_size]
+                if self.masks is not None:
+                    self.masks = self.masks[:data_size]
+            else:
+                # sample data with even interval
+                data_interval = len(self.images) // data_size
+                self.images = self.images[::data_interval]
+                self.labels = self.labels[::data_interval]
+                if self.masks is not None:
+                    self.masks = self.masks[::data_interval]
 
         print(f'-- SPLIT {split} --')
         print('max', self.images.max().item())

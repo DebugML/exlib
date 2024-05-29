@@ -1,5 +1,4 @@
 import os
-import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,9 +13,8 @@ import segmentation_models_pytorch as smp
 from ..modules.sop import SOPImageSeg, SOPConfig, get_chained_attr
 
 
-
 # The kinds of splits we can do
-SPLIT_TYPES = ["train", "test", "train_video", "test_video"]
+SPLIT_TYPES = ["train_frame", "test_frame", "train_video", "test_video"]
 
 # Splitting images by video source
 VIDEO_GLOBS = \
@@ -31,26 +29,29 @@ VIDEO_GLOBS = \
 
 #
 class AbdomenOrgans(Dataset):
-    def __init__(self,
-                 data_dir,
-                 images_dirname = "images",
-                 gonogo_labels_dirname = "gonogo_labels",
-                 organ_labels_dirname = "organ_labels",
-                 split = "train",
-                 train_ratio = 0.8,
-                 image_height = 384,  # Default image height / widths
-                 image_width = 640,
-                 image_transforms = None,
-                 label_transforms = None,
-                 split_seed = 1234,
-                 download = False):
+    def __init__(
+        self,
+         data_dir: str,
+         images_dir: str = "images",
+         gonogo_labels_dir: str = "gonogo_labels",
+         organ_labels_dir: str = "organ_labels",
+         split: str = "train_frame",
+         train_ratio: float = 0.8,
+         image_height: float = 384,
+         image_width: float = 640,
+         train_angle_max: float = 60.0,
+         image_transforms = None,
+         label_transforms = None,
+         download: bool = False,
+         gen_seed: int = 1234
+    ):
         if download:
             raise ValueError("download not implemented")
 
         self.data_dir = data_dir
-        self.images_dir = os.path.join(data_dir, images_dirname)
-        self.gonogo_labels_dir = os.path.join(data_dir, gonogo_labels_dirname)
-        self.organ_labels_dir = os.path.join(data_dir, organ_labels_dirname)
+        self.images_dir = os.path.join(data_dir, images_dir)
+        self.gonogo_labels_dir = os.path.join(data_dir, gonogo_labels_dir)
+        self.organ_labels_dir = os.path.join(data_dir, organ_labels_dir)
 
         assert os.path.isdir(self.images_dir)
         assert os.path.isdir(self.gonogo_labels_dir)
@@ -58,91 +59,83 @@ class AbdomenOrgans(Dataset):
         assert split in SPLIT_TYPES
         self.split = split
 
+        gen = torch.Generator()
+        gen.manual_seed(gen_seed)
+
         # Split not regarding video
-        torch.manual_seed(split_seed)
-        if split == "train" or split == "test":
-            all_image_filenames = sorted(os.listdir(self.images_dir))
-            num_all, num_train = len(all_image_filenames), int(len(all_image_filenames) * train_ratio)
-            idx_perms = torch.randperm(num_all)
-            todo_idxs = idx_perms[:num_train] if split == "train" else idx_perms[num_train:]
-            self.image_filenames = sorted([all_image_filenames[i] for i in todo_idxs])
+        if split == "train_frame" or split == "test_frame":
+            all_image_files = sorted(os.listdir(self.images_dir))
+            num_all, num_train = len(all_image_files), int(len(all_image_files) * train_ratio)
+            perm = torch.randperm(num_all, generator=gen)
+            idxs = perm[:num_train] if split.startswith("train") else perm[num_train:]
+            self.image_files = sorted([all_image_files[i] for i in idxs])
 
         # Split by the video source
         elif split == "train_video" or split == "test_video":
             num_all, num_train = len(VIDEO_GLOBS), int(len(VIDEO_GLOBS) * train_ratio)
-            idx_perms = torch.randperm(num_all)
-            todo_idxs = idx_perms[:num_train] if "train" in split else idx_perms[num_train:]
+            perm = torch.randperm(num_all, generator=gen)
+            idxs = perm[:num_train] if "train_frame" in split else perm[num_train:]
 
-            image_filenames = []
-            for idx in todo_idxs:
-                image_filenames += glob.glob(os.path.join(self.images_dir, VIDEO_GLOBS[idx]))
-            self.image_filenames = sorted(image_filenames)
+            image_files = []
+            for i in idxs:
+                image_files += glob.glob(os.path.join(self.images_dir, VIDEO_GLOBS[i]))
+            self.image_files = sorted(image_files)
 
         else:
             raise NotImplementedError()
+
+        # Random rotation angles used for the training data
+        self.train_angle_max = train_angle_max
+        self.random_angles = train_angle_max * (torch.rand(len(self.image_files)) * 2 - 1)
 
         self.image_height = image_height
         self.image_width = image_width
 
         # Image transforms
         if image_transforms is None:
-            if "train" in split:
-                self._image_transforms = transforms.Compose([
-                    transforms.ToTensor(),
-                    transforms.Resize((image_height, image_width), antialias=True),
-                    transforms.RandomRotation(60),
-                ])
-
-                self.image_transforms = lambda image, seed: \
-                        (torch.manual_seed(seed), self._image_transforms(image))[1]
-            else:
-                self.image_transforms = transforms.Compose([
-                    transforms.ToTensor(),
-                    transforms.Resize((image_height, image_width), antialias=True)
-                ])
+            self.image_transforms = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Resize((image_height, image_width), antialias=True),
+            ])
         else:
             assert callable(image_transforms)
             self.image_transforms = image_transforms
 
-        # Label transforms
         if label_transforms is None:
-            if "train" in split:
-                self._label_transforms = transforms.Compose([
-                    transforms.ToTensor(),
-                    transforms.Resize((image_height, image_width), antialias=True),
-                    transforms.RandomRotation(60),
-                ])
-
-                self.label_transforms = lambda label, seed: \
-                        (torch.manual_seed(seed), self._label_transforms(label))[1]
-
-            else:
-                self.label_transforms = transforms.Compose([
-                      transforms.ToTensor(),
-                      transforms.Resize((image_height, image_width), antialias=True)
-                ])
+            self.label_transforms = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Resize((image_height, image_width), antialias=True)
+            ])
         else:
             assert callable(label_transforms)
             self.label_transforms = label_transforms
 
+
     def __len__(self):
-        return len(self.image_filenames)
+        return len(self.image_files)
+
 
     def __getitem__(self, idx):
-        image_file = os.path.join(self.images_dir, self.image_filenames[idx])
-        organ_label_file = os.path.join(self.organ_labels_dir, self.image_filenames[idx])
-        gonogo_label_file = os.path.join(self.gonogo_labels_dir, self.image_filenames[idx])
+        image_file = os.path.join(self.images_dir, self.image_files[idx])
+        organ_label_file = os.path.join(self.organ_labels_dir, self.image_files[idx])
+        gonogo_label_file = os.path.join(self.gonogo_labels_dir, self.image_files[idx])
 
         # Read image and label
         image = Image.open(image_file).convert("RGB")
         organ_label = Image.open(organ_label_file).convert("L") # L is grayscale
         gonogo_label = Image.open(gonogo_label_file).convert("L")
 
-        if self.split == "train":
-            seed = torch.seed()
-            image = self.image_transforms(image, seed)
-            organ_label = self.label_transforms(organ_label, seed)
-            gonogo_label = self.label_transforms(gonogo_label, seed)
+        if self.split.startswith("train"):
+            image = self.image_transforms(image)
+            organ_label = self.label_transforms(organ_label)
+            gonogo_label = self.label_transforms(gonogo_label)
+
+            # Apply the random rotation
+            angle = self.random_angles[idx].item()
+            image = transforms.functional.rotate(image, angle)
+            organ_label = transforms.functional.rotate(organ_label, angle)
+            gonogo_label = transforms.functional.rotate(gonogo_label, angle)
+
         else:
             image = self.image_transforms(image)
             organ_label = self.label_transforms(organ_label)
@@ -287,7 +280,7 @@ class OrganGNGModel(nn.Module):
 
 
 class OrganGNGSopSelectorModel(OrganGNGModel):
-    def __init__(self, num_organs=4):
+    def __init__(self, num_organs=4, wrapper_config_filepath='organs/abdomen_unet_wrapper_a.json'):
         super().__init__(num_organs=num_organs)
         self.organ_seg_model = Unet(
                 encoder_name = "resnet50",
@@ -301,21 +294,14 @@ class OrganGNGSopSelectorModel(OrganGNGModel):
                 encoder_weights = "imagenet",
                 in_channels = 3,
                 classes = 3,
-                activation = "softmax2d")
+                activation = "identity")
         
-        config = SOPConfig(
-            attn_patch_size=32,
-            num_heads=1,
-            num_masks_sample=20,
-            finetune_layers=['segmentation_head'],
-            hidden_size=16,
-            num_labels=3,
-            image_size=(352, 640),
-            num_channels=num_organs,
-            num_masks_max=100
-        )
+        self.wrapper_config_filepath = wrapper_config_filepath
+        print('wrapper_config_filepath', wrapper_config_filepath)
+        config = SOPConfig(json_file=wrapper_config_filepath)
 
         # allow specifying args to be different from in the json file
+        # print(get_chained_attr(self.gonogo_model, config.finetune_layers[0])[0].weight.shape)
         class_weights = get_chained_attr(self.gonogo_model, config.finetune_layers[0])[0].weight.view(3,-1).clone()
         self.sop_model = SOPImageSeg(config, 
                               self.gonogo_model,
@@ -329,7 +315,6 @@ class OrganGNGSopSelectorModel(OrganGNGModel):
     def forward(self, x, get_organs=False, return_dict=False):
         organ_output = self.organ_seg_model(x)
         organ_mask_output = organ_output.logits.argmax(dim=1).byte()
-        # organ_mask_output_resize = F.interpolate(organ_mask_output, size=(x.shape[2], x.shape[3]), mode='nearest')
         organ_mask_output_bools = []
         for organ_mask_output_i in organ_mask_output:
             organ_mask_output_bool = convert_idx_masks_to_bool(organ_mask_output_i, 
@@ -348,3 +333,83 @@ class OrganGNGSopSelectorModel(OrganGNGModel):
         if get_organs:
             return organ_output.logits, gonogo_output.logits
         return gonogo_output.logits
+    
+    
+def miou(predict, label, class_num=3):
+    """
+        get miou of multiple batches
+        @param predict: Shape:[B, W, H]
+        @param label: Shape:[B, W, H]
+    """
+    batch = label.shape[0]
+    predict, label = predict.flatten(), label.flatten()  
+    #select pixels to be segmentated
+    k = (predict >= 0) & (predict < class_num) 
+    hist = torch.bincount(class_num * predict[k].type(torch.int32) + label[k], minlength=batch * (class_num ** 2)).reshape(batch, class_num, class_num)
+    hist = hist.sum(0)
+
+    miou = torch.diag(hist) / torch.maximum((hist.sum(1) + hist.sum(0) - torch.diag(hist)), torch.tensor(1))
+    return miou.mean()
+
+
+def dice_acc(predict, label):
+    """
+        get dice coefficient of multiple batches
+        @param predict: Shape:[B, C, W, H]  C = num_classes
+        @param label: Shape:[B, C, W, H]
+    """
+    # import pdb; pdb.set_trace()
+    batch_num, class_num = predict.shape[0: 2]
+    assert predict.size() == label.size(), "the size of predict and target must be equal."
+    
+    intersection = (predict * label).reshape((batch_num, class_num, -1)).sum(dim=2)
+    union = (predict + label).reshape((batch_num, class_num, -1)).sum(dim=2)
+    dice = (2. * intersection + 1) / (union + 1)
+    dice = dice.mean()
+    return dice
+
+
+def mpa(predict, label, class_num=3):
+    """
+       get MPA of multiple batches
+        @param predict: Shape:[B, W, H]
+        @param label: Shape:[B, W, H]
+    """
+    batch = label.shape[0]
+    predict, label = predict.flatten(), label.flatten() 
+    k = (predict >= 0) & (predict < class_num) 
+    hist = torch.bincount(class_num * predict[k].type(torch.int32) + label[k], minlength=batch * (class_num ** 2)).reshape(batch, class_num, class_num)
+    hist = hist.sum(0)
+    acc_cls = torch.diag(hist) / hist.sum(axis=1)
+    acc_cls = torch.nanmean(acc_cls)    #.type(torch.float32)
+    return acc_cls
+
+
+
+def weighted_dice_loss(predict, label):
+    """
+    Computes the weighted dice loss for multi-class image segmentation.
+    Args:
+        predict: Tensor of predicted values with shape (batch_size, num_classes, height, width)
+        label: Tensor of ground truth labels with shape (batch_size, num_classes, height, width)
+    Returns:
+        Weighted dice loss tensor
+    """
+    batch_size = predict.size(0)
+    num_classes = predict.size(1)
+    smooth = 1e-5  # smoothing factor to avoid division by zero
+    total_loss = 0.0
+    
+    for i in range(batch_size):
+        for j in range(num_classes):
+            predict_mask = predict[i, j, :, :]
+            label_mask = label[i, j, :, :]
+            intersection = (predict_mask * label_mask).sum()
+            area_predict = predict_mask.sum()  # sum of all possibilities
+            area_label = label_mask.sum()  #sum of all ones 
+
+            weight = area_label/(640*360 + smooth)
+            loss = 1 - ((2.0 * intersection + smooth) / (area_predict + area_label + smooth)) * weight
+            total_loss +=  loss
+            
+    return total_loss / (batch_size * num_classes)

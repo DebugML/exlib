@@ -164,7 +164,12 @@ class Archipelago(Explainer):
                 inter_strengths[pair] = (
                     weights[1] * inter_a[pair] ** 2 + weights[0] * inter_b[pair] ** 2
                 )
-        sorted_scores = sorted(inter_strengths.items(), key=lambda kv: -kv[1])
+        # import pdb; pdb.set_trace()
+        # sorted_scores = sorted(inter_strengths.items(), key=lambda kv: -kv[1][0])
+        sorted_scores = []
+        for i in range(len(list(inter_strengths.values())[0])):
+            sorted_scores.append([(k, v[i]) for k, v in sorted(inter_strengths.items(), 
+                    key=lambda kv: -kv[1][i])])
 
         output = {"interactions": sorted_scores}
         for key in search_a:
@@ -177,36 +182,51 @@ class Archipelago(Explainer):
             detection_dict = self.archdetect(get_pairwise_effects=False)
             inter_strengths = detection_dict["interactions"]
             self.main_effects = detection_dict["main_effects"]
-            self.inter_sets, _ = zip(*inter_strengths)
+            # self.inter_sets, _ = zip(*inter_strengths)
+            self.inter_sets = []
+            for inter_strengths_i in inter_strengths:
+                inter_sets_i, _ = zip(*inter_strengths_i) 
+                self.inter_sets.append(inter_sets_i)
 
-        if isinstance(top_k, int):
-            thresholded_inter_sets = self.inter_sets[:top_k]
-        elif top_k is None:
-            thresholded_inter_sets = self.inter_sets
-        else:
-            raise ValueError("top_k must be int or None")
+        inter_effects_all = []
+        for i in range(len(self.inter_sets)):
+            self.inter_sets[i] = list(self.inter_sets[i])
 
-        inter_sets_merged = merge_overlapping_sets(thresholded_inter_sets)
-        inter_effects = self.archattribute(inter_sets_merged)
+            if isinstance(top_k, int):
+                thresholded_inter_sets = self.inter_sets[i][:top_k]
+            elif top_k is None:
+                thresholded_inter_sets = self.inter_sets[i]
+            else:
+                raise ValueError("top_k must be int or None")
+
+            inter_sets_merged = merge_overlapping_sets(thresholded_inter_sets)
+            inter_effects = self.archattribute(inter_sets_merged)
+            inter_effects_all.append(inter_effects)
 
         if separate_effects:
-            return inter_effects, self.main_effects
+            # return inter_effects, self.main_effects
+            return inter_effects_all, self.main_effects
 
-        merged_indices = merge_overlapping_sets(
-            set(self.main_effects.keys()) | set(inter_effects.keys())
-        )
-        merged_explanation = dict()
-        for s in merged_indices:
-            if s in inter_effects:
-                merged_explanation[s] = inter_effects[s]
-            elif s[0] in self.main_effects:
-                assert len(s) == 1
-                merged_explanation[s] = self.main_effects[s[0]]
-            else:
-                raise ValueError(
-                    "Error: index should have been in either main_effects or inter_effects"
-                )
-        return merged_explanation
+        merged_explanation_all = []
+        for i, inter_effects in enumerate(inter_effects_all):
+            merged_indices = merge_overlapping_sets(
+                set(self.main_effects.keys()) | set(inter_effects.keys())
+            )
+            
+            merged_explanation = dict()
+            for s in merged_indices:
+                if s in inter_effects:
+                    merged_explanation[s] = inter_effects[s][i]
+                elif s[0] in self.main_effects:
+                    assert len(s) == 1
+                    merged_explanation[s] = self.main_effects[s[0]][i]
+                else:
+                    raise ValueError(
+                        "Error: index should have been in either main_effects or inter_effects"
+                    )
+            merged_explanation_all.append(merged_explanation)
+        # return merged_explanation
+        return merged_explanation_all
 
     def search_feature_sets(
         self,
@@ -260,13 +280,22 @@ class Archipelago(Explainer):
                 # exactly zero due to precision issues in the function call. Here, if all 
                 # f_x are much larger than and the existing numerator value in magitude,
                 # then we set the numerator to zero
-                if np.abs(numerator) / np.min(np.abs(np.array([f_a, f_b, f_c, f_d]))) < 1e-5:
-                    numerator = 0.0
-                    
-                if denominator == 0.0:
-                    inter_scores[(i, j)] = 0.0
-                else:
-                    inter_scores[(i, j)] = numerator / denominator
+                # if np.abs(numerator) / np.min(np.abs(np.array([f_a, f_b, f_c, f_d]))) < 1e-5:
+                #     numerator = 0.0
+                try:
+                    numerator[np.abs(numerator) / np.min(np.abs(np.array([f_a, f_b, f_c, f_d]))) < 1e-5] = 0.0
+                except:
+                    import pdb; pdb.set_trace()
+                    numerator[np.abs(numerator) / np.min(np.abs(np.array([f_a, f_b, f_c, f_d]))) < 1e-5] = 0.0
+
+                # if denominator == 0.0:
+                #     inter_scores[(i, j)] = 0.0
+                # else:
+                #     inter_scores[(i, j)] = numerator / denominator
+                mask = denominator == 0.0
+                inter_scores[(i, j)] = np.zeros_like(numerator)
+                # import pdb; pdb.set_trace()
+                inter_scores[(i, j)][~mask] = numerator[~mask] / denominator[~mask]
 
                 if (
                     get_pairwise_effects
