@@ -1,59 +1,70 @@
 import os
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torchvision.models as tvmodels
-import torchvision.transforms as transforms
-
-import numpy as np
-
-import glob
-from typing import Optional, Union, List
-
+import torchvision
+import torchvision.transforms as tfs
+from dataclasses import dataclass
 import datasets as hfds
 import huggingface_hub as hfhub
 
 HF_DATA_REPO = "BrachioLab/cholecystectomy_segmentation"
 
 class CholecDataset(torch.utils.data.Dataset):
+    gonogo_names: str = [
+        "Background",
+        "Safe",
+        "Unsafe"
+    ]
+
+    organ_names: str = [
+        "Background",
+        "Liver",
+        "Gallbladder",
+        "Hepatocystic Triangle"
+    ]
+
     def __init__(
         self,
-        hf_repo: str = HF_DATA_REPO,
+        split: str = "all_data",
+        hf_data_repo: str = HF_DATA_REPO,
         image_size: tuple[int] = (360, 640)
     ):
-        self.dataset_dict = hfds.load_dataset(
-            hf_repo,
-            download_mode = hfds.DownloadMode.REUSE_CACHE_IF_EXISTS
-        )
-        self.dataset = self.dataset_dict["all_data"]
+        self.dataset = hfds.load_dataset(hf_data_repo, split=split)
+        self.dataset.set_format("torch")
         self.image_size = image_size
-        self.transforms = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Resize(image_size, antialias=True),
+        self.preprocess_image = tfs.Compose([
+            tfs.Lambda(lambda x: x.float() / 255),
+            tfs.Resize(image_size),
+        ])
+        self.preprocess_labels = tfs.Compose([
+            tfs.Lambda(lambda x: x.unsqueeze(0)),
+            tfs.Resize(image_size),
+            tfs.Lambda(lambda x: x[0])
         ])
 
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        image = self.transforms(self.dataset[idx]["image"])
-        gonogo = self.transforms(np.array(self.dataset[idx]["gonogo"]))
-        organs = self.transforms(np.array(self.dataset[idx]["organs"]))
+        image = self.preprocess_image(self.dataset[idx]["image"])
+        gonogo = self.preprocess_labels(self.dataset[idx]["gonogo"])
+        organs = self.preprocess_labels(self.dataset[idx]["organs"])
         return {
-            "image": image,
-            "gonogo": gonogo.view(image.shape[1:]),
-            "organs": organs.view(image.shape[1:])
+            "image": image,     # (3,H,W)
+            "gonogo": gonogo,   # (H,W)
+            "organs": organs,   # (H,W)
         }
 
 
+@dataclass
 class CholecModelOutput:
-    def __init__(self, logits: torch.FloatTensor):
-        self.logits = logits
+    logits: torch.FloatTensor
 
 
 class CholecModel(nn.Module, hfhub.PyTorchModelHubMixin):
     def __init__(self, task: str = "gonogo"):
         super().__init__()
+        self.task = task
         if task == "gonogo":
             self.num_labels = 3
         elif task == "organs":
@@ -61,9 +72,13 @@ class CholecModel(nn.Module, hfhub.PyTorchModelHubMixin):
         else:
             raise ValueError(f"Unrecognized task {task}")
 
-        self.seg_model = tvmodels.segmentation.fcn_resnet50(num_classes=self.num_labels)
+        self.seg_model = torchvision.models.segmentation.fcn_resnet50(num_classes=self.num_labels)
+        self.preprocess = tfs.Compose([
+            tfs.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
+        ])
 
     def forward(self, x: torch.FloatTensor):
+        x = self.preprocess(x)
         seg_out = self.seg_model(x)
         return CholecModelOutput(
             logits = seg_out["out"]
