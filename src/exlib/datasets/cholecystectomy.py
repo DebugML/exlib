@@ -85,14 +85,14 @@ class CholecModel(nn.Module, hfhub.PyTorchModelHubMixin):
         )
 
 
-class CholecAlignment(nn.Module):
+class CholecMetric(nn.Module):
     def __init__(self):
         super().__init__()
 
     def forward(
         self,
         groups_pred: torch.LongTensor(),
-        groups_true: torch.LongTensor()
+        groups_true: torch.LongTensor(),
     ):
         """
             groups_pred: (N,P,H W)
@@ -116,6 +116,6 @@ class CholecAlignment(nn.Module):
         pred_aligns_sum = (Gp * iou_maxs.view(N,P,1,1)).sum(dim=1) # (N,H,W)
         score = pred_aligns_sum / Gp.sum(dim=1) # (N,H,W), division is the |Gp(feaure)|
         score[~score.isfinite()] = 0    # Make div-by-zero things zero
-        return score
+        return score    # (N,H,W), a score for each feature
 
 
