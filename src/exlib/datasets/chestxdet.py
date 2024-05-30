@@ -12,6 +12,9 @@ HF_DATA_REPO = "BrachioLab/chestxdet"
 
 class ChestXDetDataset(torch.utils.data.Dataset):
     pathology_names = [
+        "Atelectasis",
+        "Calcification",
+        "Cardiomegaly",
         "Consolidation",
         "Diffuse Nodule",
         "Effusion",
@@ -118,3 +121,35 @@ class ChestXDetModel(nn.Module, hfhub.PyTorchModelHubMixin):
         )
 
 
+class ChestXDetMetric(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(
+        self,
+        groups_pred: torch.LongTensor(),
+        groups_true: torch.LongTensor(),
+    ):
+        """
+            groups_pred: (N,P,H W)
+            groups_true: (N,T,H,W)
+        """
+        N, P, H, W = groups_pred.shape
+        _, T, H, W = groups_true.shape
+
+        # Make sure to binarize groups and shorten names to help with math
+        Gp = groups_pred.bool().long()
+        Gt = groups_true.bool().long()
+
+        # Make (N,P,T)-shaped lookup tables for the intersection and union
+        inters = (Gp.view(N,P,1,H,W) * Gt.view(N,1,T,H,W)).sum(dim=(-1,-2))
+        unions = (Gp.view(N,P,1,H,W) + Gt.view(N,1,T,H,W)).clamp(0,1).sum(dim=(-1,-2))
+        ious = inters / unions  # (N,P,T)
+        ious[~ious.isfinite()] = 0 # Set the bad values to a score of zero
+        iou_maxs = ious.max(dim=-1).values   # (N,P): max_{gt in Gt} iou(gp, gt)
+
+        # sum_{gp in group_preds(feature)} iou_max(gp, Gt)
+        pred_aligns_sum = (Gp * iou_maxs.view(N,P,1,1)).sum(dim=1) # (N,H,W)
+        score = pred_aligns_sum / Gp.sum(dim=1) # (N,H,W), division is the |Gp(feaure)|
+        score[~score.isfinite()] = 0    # Make div-by-zero things zero
+        return score    # (N,H,W), a score for each feature
