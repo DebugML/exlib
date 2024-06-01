@@ -13,8 +13,8 @@ from pathlib import Path
 import shutil
 from datetime import datetime
 
-from connect_later.informer_models import MaskedInformerFourierPE
-from connect_later.dataset_preprocess_raw import create_train_dataloader_raw
+from exlib.datasets.informer_models import MaskedInformerFourierPE
+from exlib.datasets.dataset_preprocess_raw import create_train_dataloader_raw
 
 def parse_args():
     parser = argparse.ArgumentParser()
