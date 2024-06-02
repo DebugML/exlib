@@ -5,6 +5,7 @@ import torchvision
 import torchvision.transforms as tfs
 import numpy as np
 from dataclasses import dataclass
+import torchxrayvision as xrv
 import datasets as hfds
 import huggingface_hub as hfhub
 
@@ -13,17 +14,18 @@ HF_DATA_REPO = "BrachioLab/chestxdet"
 class ChestXDetDataset(torch.utils.data.Dataset):
     pathology_names = [
         "Atelectasis",
-        "Calcification",
         "Cardiomegaly",
         "Consolidation",
-        "Diffuse Nodule",
+        "Edema",
         "Effusion",
         "Emphysema",
         "Fibrosis",
-        "Fracture",
+        "Hernia",
+        "Infiltration",
         "Mass",
         "Nodule",
-        "Pleural Thickening",
+        "Pleural_Thickening",
+        "Pneumonia",
         "Pneumothorax"
     ]
 
@@ -48,7 +50,7 @@ class ChestXDetDataset(torch.utils.data.Dataset):
         self,
         split: str = "train",
         hf_data_repo: str = HF_DATA_REPO,
-        image_size: int = 1024,
+        image_size: int = 224,
     ):
         self.dataset = hfds.load_dataset(hf_data_repo, split=split)
         self.dataset.set_format("torch")
@@ -59,25 +61,17 @@ class ChestXDetDataset(torch.utils.data.Dataset):
 
         ])
 
-        self.preprocess_labels = tfs.Compose([
-            tfs.Lambda(lambda x: x.unsqueeze(0)),
-            tfs.Resize(image_size),
-            tfs.Lambda(lambda x: x[0])
-        ])
-
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
         image = self.preprocess_image(self.dataset[idx]["image"])
-        P = self.preprocess_labels(self.dataset[idx]["pathols"])
-        S = self.preprocess_labels(self.dataset[idx]["structs"])
-        pathols = torch.stack([(P // (2**i)) % 2 == 1 for i in range(13)]).long()
-        structs = torch.stack([(S // (2**i)) % 2 == 1 for i in range(14)]).long()
+        pathols = torch.tensor(self.dataset[idx]["pathols"])
+        structs = torch.tensor(self.dataset[idx]["structs"])
 
         return {
             "image": image,     # (1,H,W)
-            "pathols": pathols, # (13,H,W)
+            "pathols": pathols, # (14)
             "structs": structs, # (14,H,W)
         }
 
@@ -87,38 +81,40 @@ class ChestXDetModelOutput:
     logits: torch.FloatTensor
 
 
-class ChestXDetModel(nn.Module, hfhub.PyTorchModelHubMixin):
-    def __init__(
-        self,
-        task: str = "pathols",
-        scaled_image_size: int = 256,
-    ):
+class ChestXDetPathologyModel(nn.Module, hfhub.PyTorchModelHubMixin):
+    def __init__(self):
         super().__init__()
-        self.task = task
-        if task == "pathols":
-            self.num_labels = 13
-        elif task == "structs":
-            self.num_labels = 14
-        else:
-            raise ValueError(f"Unrecognized task {task}")
-
-        self.seg_model = torchvision.models.segmentation.fcn_resnet50(num_classes=self.num_labels)
-        self.scaled_image_size = scaled_image_size
-        self.preprocess = tfs.Compose([
-            tfs.Normalize(mean=[0.511], std=[0.257]),    # Computed from 1000 samples of training data
-            tfs.Resize(scaled_image_size)
-        ])
-
+        self.xrv_model = xrv.models.DenseNet(weights="densenet121-res224-nih") # NIH chest X-ray8
 
     def forward(self, x: torch.FloatTensor):
-        N, _, H, W = x.shape
-        x = self.preprocess(x).repeat(1,3,1,1) # (N,3,H,W)
-        seg_out = self.seg_model(x)
-        logits = seg_out["out"]
-        logits = tfs.Resize((H,W))(logits)
-        return ChestXDetModelOutput(
-            logits = logits
-        )
+        """ x: (N,C,224,224) with values in [0,1], with either C=1 or C=2 channels """
+
+        x = x * 2048 - 1024 # The xrv model requires some brazingo scaling
+        out = self.xrv_model(x)
+
+        """ The XRV model outputs 18 pathology labels in the following order:
+            ['Atelectasis',
+             'Consolidation',
+             'Infiltration',
+             'Pneumothorax',
+             'Edema',
+             'Emphysema',
+             'Fibrosis',
+             'Effusion',
+             'Pneumonia',
+             'Pleural_Thickening',
+             'Cardiomegaly',
+             'Nodule',
+             'Mass',
+             'Hernia',
+             '',
+             '',
+             '',
+             '']
+        ... so we need to sort it to match our ordering
+        """
+        pathol_idxs = [0, 10, 1, 4, 7, 5, 6, 13, 2, 12, 11, 9, 8, 3]
+        return out[:,pathol_idxs]
 
 
 class ChestXDetMetric(nn.Module):
