@@ -7,28 +7,6 @@ from functools import partial
 
 from typing import Optional, Iterable
 
-from gluonts.dataset.field_names import FieldName
-from gluonts.transform import (
-    AddAgeFeature,
-    AddObservedValuesIndicator,
-    AddTimeFeatures,
-    AsNumpyArray,
-    Chain,
-    ExpectedNumInstanceSampler,
-    InstanceSplitter,
-    RemoveFields,
-    SelectFields,
-    SetField,
-    TestSplitSampler,
-    Transformation,
-    ValidationSplitSampler,
-    VstackFeatures,
-    RenameFields,
-)
-from gluonts.transform.sampler import InstanceSampler
-from gluonts.itertools import Cached, Cyclic, IterableSlice, PseudoShuffled
-from torch.utils.data import IterableDataset
-
 import torch
 from torch.utils.data import DataLoader
 from transformers import PretrainedConfig, set_seed
@@ -120,9 +98,20 @@ def transform_raw_data_example(example):
     example['transposed_times_wv'] = np.array(example['times_wv']).T
     # divide by max value to constrain to [0,1]
     example = create_attention_mask(example)
+    #example = normalize_by_channel(example, "transposed_times_wv")
+    #example = normalize_all(example, "transposed_target") # normalize flux, flux_err by max overall
+    return example
+
+def transform_raw_data_example_model(example):
+    # was 300 x 2, need to be 2 x 300 (first dim is channel)
+    example['transposed_target'] = np.array(example['target']).T
+    example['transposed_times_wv'] = np.array(example['times_wv']).T
+    # divide by max value to constrain to [0,1]
+    example = create_attention_mask(example)
     example = normalize_by_channel(example, "transposed_times_wv")
     example = normalize_all(example, "transposed_target") # normalize flux, flux_err by max overall
     return example
+
 
 def transform_raw_data(dataset):
     # normalize time, data; create attention mask
@@ -139,7 +128,31 @@ def transform_raw_data(dataset):
     # remove/rename fields
     name_mapping = {
                 "times_wv": "time_features",
-                FieldName.TARGET: "values",
+                "target": "values",
+                "attention_mask": "observed_mask",
+            }
+
+    dataset = dataset.rename_columns(name_mapping)
+    dataset = dataset.with_format('np')
+
+    return dataset
+
+def transform_raw_data_model(dataset):
+    # normalize time, data; create attention mask
+    dataset = dataset.map(transform_raw_data_example_model)
+    print(f"original dataset size: {len(dataset)}")
+    # filter out nans
+    dataset = dataset.filter(lambda example: not np.isnan(example['transposed_target']).any() and not np.isnan(example['transposed_times_wv']).any())
+    print(f"remove nans dataset size: {len(dataset)}")
+    # have to swap out these field names because can't change dataset field shapes in place
+    dataset = dataset.remove_columns(["target", "times_wv"])
+    dataset = dataset.rename_column("transposed_target", "target")
+    dataset = dataset.rename_column("transposed_times_wv", "times_wv")
+
+    # remove/rename fields
+    name_mapping = {
+                "times_wv": "time_features",
+                "target": "values",
                 "attention_mask": "observed_mask",
             }
 
@@ -234,9 +247,57 @@ def create_test_dataloader_raw(
             "future_observed_mask",
         ]
 
-    transformed_data = transform_raw_data(dataset)
-    transformed_data = transformed_data.shuffle(seed=seed).flatten_indices()  # TODO add seed to args
-    mask_probability = 0. if config.has_labels else config.mask_probability# don't mask for fine-tuning
+    transformed_data = transform_raw_data(dataset).flatten_indices()
+    #transformed_data = transformed_data.shuffle(seed=seed)  # TODO add seed to args
+    mask_probability = 0. if config.has_labels else config.mask_probability # don't mask for fine-tuning
+    return DataLoader(
+        transformed_data,
+        batch_size=batch_size,
+        # sampler=sampler,
+        num_workers=0,
+        collate_fn=partial(masked_data_collator, mask_probability, PREDICTION_INPUT_NAMES)
+    )
+
+def create_test_dataloader(
+    config: PretrainedConfig,
+    dataset,
+    batch_size: int,
+    seed: Optional[int] = 42,
+    add_objid: Optional[bool] = False,
+    compute_loss: Optional[bool] = False,
+):
+    set_seed(seed)
+
+    PREDICTION_INPUT_NAMES = [
+        "past_time_features",
+        "past_values",
+        "past_observed_mask",
+        "future_time_features",
+    ]
+    if config.num_static_categorical_features > 0:
+        PREDICTION_INPUT_NAMES.append("static_categorical_features")
+
+    if config.num_static_real_features > 0:
+        PREDICTION_INPUT_NAMES.append("static_real_features")
+        if "redshift" in dataset.column_names:
+            dataset = dataset.rename_column("redshift", "static_real_features")
+
+    if config.has_labels:
+        PREDICTION_INPUT_NAMES.append("labels")
+        dataset = dataset.rename_column("label", "labels")
+
+    if add_objid:
+        PREDICTION_INPUT_NAMES.append("objid")
+
+    if compute_loss:
+        PREDICTION_INPUT_NAMES += [
+            "future_values",
+            "future_observed_mask",
+        ]
+
+    transformed_data = transform_raw_data_model(dataset).flatten_indices()
+    #transformed_data = transformed_data.shuffle(seed=seed)  # TODO add seed to args
+    mask_probability = 0. if config.has_labels else config.mask_probability # don't mask for fine-tuning
     return DataLoader(
         transformed_data,
         batch_size=batch_size,
@@ -260,7 +321,7 @@ def create_network_inputs(
     elif config.scaling == "std":
         scaler = InformerStdScaler(dim=1, keepdim=True)
     else:
-        scaler = InformerNOPScaler(dim=1, keepdim=True)
+        scaler = InformerNOPScaler(config)
 
     past_length = config.context_length + max(config.lags_sequence)
     # time feature
