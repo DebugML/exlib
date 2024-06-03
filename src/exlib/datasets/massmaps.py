@@ -110,46 +110,100 @@ class MassMapsConvnetForImageRegression(PreTrainedModel):
 
 class MassMapsAlignment(nn.Module):
     def __init__(self, void_threshold=0, cluster_threshold=3, 
-                 void_scale=1, cluster_scale=1):
+                 eps=1e-6,
+                #  void_scale=1, cluster_scale=1
+                 ):
         super().__init__()
         self.void_threshold = void_threshold
         self.cluster_threshold = cluster_threshold
-        self.daf_types = ['other', 'void', 'cluster']
-        self.daf_types2id = {
-            'other': 0,
-            'void': 1,
-            'cluster': 2
-        }
-        self.void_scale = void_scale
-        self.cluster_scale = cluster_scale
-        
-    def forward(self, zp, x, reduce='sum'):
+        self.eps = eps
+        # self.daf_types = ['other', 'void', 'cluster']
+        # self.daf_types2id = {
+        #     'other': 0,
+        #     'void': 1,
+        #     'cluster': 2
+        # }
+        # self.void_scale = void_scale
+        # self.cluster_scale = cluster_scale
+
+    def forward(self, groups, x, reduce='sum'):
         """
-        zp: (N, M, H, W) 0 or 1, or bool
+        group: (N, M, H, W) 0 or 1, or bool
         x: image (N, 1, H, W)
         return 
         """
         assert reduce in ['sum', 'none']
         # metric test
-        zp = zp.bool().float() # if float then turned into bool
-        masked_imgs = zp * x # (N, M, H, W)
+        groups = groups.bool().float() # if float then turned into bool
+        masked_imgs = groups * x # (N, M, H, W)
         sigma = x.flatten(2).std(dim=-1) # (N, M)
-        mask_masses = (masked_imgs * zp).flatten(2).sum(-1)
-        img_masses = zp.flatten(2).sum(-1)
+        mask_masses = (masked_imgs * groups).flatten(2).sum(-1)
+        img_masses = groups.flatten(2).sum(-1)
         mask_intensities = mask_masses / img_masses
-        mask_sizes = zp.flatten(2).sum(-1) # (N, M)
+        mask_sizes = groups.flatten(2).sum(-1) # (N, M)
         num_masks = mask_sizes.bool().sum(-1) # (N, M)
         
-        align_void = (masked_imgs < self.void_threshold*sigma[:,:,None,None]).sum([-1,-2]) \
-                        / mask_sizes * (- mask_masses)
-        align_void[mask_sizes.bool().logical_not()] = 0
-        align_void[align_void < 0] = 0
-        align_cluster = (masked_imgs > self.cluster_threshold*sigma[:,:,None,None]).sum([-1,-2]) \
-                        / mask_sizes
-        align_cluster[mask_sizes.bool().logical_not()] = 0
-        align_cluster[align_cluster < 0] = 0
-        
+        p_void = (masked_imgs < self.void_threshold*sigma[:,:,None,None]).sum([-1,-2]) / mask_sizes 
+        p_cluster = (masked_imgs > self.cluster_threshold*sigma[:,:,None,None]).sum([-1,-2]) / mask_sizes
+        p_other = 1 - p_void - p_cluster
+
+        p_void_ = (p_void + self.eps) / (p_void + p_cluster + p_other + self.eps * 3)
+        p_cluster_ = (p_cluster + self.eps) / (p_void + p_cluster + p_other + self.eps * 3)
+        p_other_ = (p_other + self.eps) / (p_void + p_cluster + p_other + self.eps * 3)
+
+        p_void_vconly = p_void_ / (p_void_ + p_cluster_)
+        p_cluster_vconly = p_cluster_ / (p_void_ + p_cluster_)
+
+        purity = 1/2 * (2 + p_void_vconly * torch.log2(p_void_vconly) + \
+            p_cluster_vconly * torch.log2(p_cluster_vconly)) * (p_void_ + p_cluster_) # (N, M)
+
+        # align_i
+        purity[mask_sizes.bool().logical_not()] = 0 
+        alignment = (purity[:,:,None,None] * groups).sum(1) / groups.sum(1)
+        # alignment[groups.sum(1) == 0] = 0
+
         if reduce == 'sum':
-            return align_void * self.void_scale + align_cluster * self.cluster_scale
+            return alignment # (N, H, W)
         else: # none
-            return align_void, align_cluster
+            return {
+                'alignment': alignment,
+                'purity': purity,
+                'p_void_vconly': p_void_vconly,
+                'p_cluster_vconly': p_cluster_vconly,
+                'p_void_': p_void_,
+                'p_cluster_': p_cluster_,
+                'p_other_': p_other_
+            }
+            
+            # purity, p_void_vconly, p_cluster_vconly, p_void_, p_cluster_, p_other_
+        
+    # def forward(self, zp, x, reduce='sum'):
+    #     """
+    #     zp: (N, M, H, W) 0 or 1, or bool
+    #     x: image (N, 1, H, W)
+    #     return 
+    #     """
+    #     assert reduce in ['sum', 'none']
+    #     # metric test
+    #     zp = zp.bool().float() # if float then turned into bool
+    #     masked_imgs = zp * x # (N, M, H, W)
+    #     sigma = x.flatten(2).std(dim=-1) # (N, M)
+    #     mask_masses = (masked_imgs * zp).flatten(2).sum(-1)
+    #     img_masses = zp.flatten(2).sum(-1)
+    #     mask_intensities = mask_masses / img_masses
+    #     mask_sizes = zp.flatten(2).sum(-1) # (N, M)
+    #     num_masks = mask_sizes.bool().sum(-1) # (N, M)
+        
+    #     align_void = (masked_imgs < self.void_threshold*sigma[:,:,None,None]).sum([-1,-2]) \
+    #                     / mask_sizes * (- mask_masses)
+    #     align_void[mask_sizes.bool().logical_not()] = 0
+    #     align_void[align_void < 0] = 0
+    #     align_cluster = (masked_imgs > self.cluster_threshold*sigma[:,:,None,None]).sum([-1,-2]) \
+    #                     / mask_sizes
+    #     align_cluster[mask_sizes.bool().logical_not()] = 0
+    #     align_cluster[align_cluster < 0] = 0
+        
+    #     if reduce == 'sum':
+    #         return align_void * self.void_scale + align_cluster * self.cluster_scale
+    #     else: # none
+    #         return align_void, align_cluster
