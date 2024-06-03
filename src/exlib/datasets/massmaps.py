@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from typing import List, Optional, Tuple, Union
 from transformers import PretrainedConfig, PreTrainedModel
+import math
+import matplotlib.pyplot as plt
 
 DATASET_REPO = "BrachioLab/massmaps-cosmogrid-100k"
 MODEL_REPO = "BrachioLab/massmaps-conv"
@@ -160,7 +162,7 @@ class MassMapsAlignment(nn.Module):
         # align_i
         purity[mask_sizes.bool().logical_not()] = 0 
         alignment = (purity[:,:,None,None] * groups).sum(1) / groups.sum(1)
-        # alignment[groups.sum(1) == 0] = 0
+        alignment[groups.sum(1) == 0] = 0
 
         if reduce == 'sum':
             return alignment # (N, H, W)
@@ -207,3 +209,31 @@ class MassMapsAlignment(nn.Module):
     #         return align_void * self.void_scale + align_cluster * self.cluster_scale
     #     else: # none
     #         return align_void, align_cluster
+
+def show_example(groups, X, img_idx=0):
+    massmaps_align = MassMapsAlignment()
+    alignment_results = massmaps_align(groups, X, reduce='none')
+    
+    m = groups.shape[1]
+    cols = 8
+    rows = math.ceil(m / cols)
+    fig, axs = plt.subplots(rows, cols, figsize=(cols*3, rows*4))
+    axs = axs.ravel()
+
+    image = X[img_idx]
+    for idx in range(len(axs)):
+        if idx < m:
+            mask = groups[img_idx][idx]
+
+            if mask.sum() > 0:
+                axs[idx].imshow(image[0].cpu().numpy())
+                axs[idx].contour(mask.cpu().numpy() > 0, 2, colors='red')
+                axs[idx].contourf(mask.cpu().numpy() > 0, 2, hatches=['//', None, None],
+                                cmap='gray', extend='neither', linestyles='--', alpha=0.01)
+                p_void_ = alignment_results['p_void_']
+                p_cluster_ = alignment_results['p_cluster_']
+                purity = alignment_results['purity']
+                # total_score = alignment_scores_void[0][idx].item() * massmaps_align.void_scale + alignment_scores_cluster[0][idx].item() * massmaps_align.cluster_scale
+                axs[idx].set_title(f'void {p_void_[0][idx].item():.5f}\ncluster {p_cluster_[0][idx].item():.5f}\npurity {purity[0][idx].item():.5f}')
+        axs[idx].axis('off')
+    plt.show()
