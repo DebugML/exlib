@@ -7,28 +7,6 @@ from functools import partial
 
 from typing import Optional, Iterable
 
-from gluonts.dataset.field_names import FieldName
-from gluonts.transform import (
-    AddAgeFeature,
-    AddObservedValuesIndicator,
-    AddTimeFeatures,
-    AsNumpyArray,
-    Chain,
-    ExpectedNumInstanceSampler,
-    InstanceSplitter,
-    RemoveFields,
-    SelectFields,
-    SetField,
-    TestSplitSampler,
-    Transformation,
-    ValidationSplitSampler,
-    VstackFeatures,
-    RenameFields,
-)
-from gluonts.transform.sampler import InstanceSampler
-from gluonts.itertools import Cached, Cyclic, IterableSlice, PseudoShuffled
-from torch.utils.data import IterableDataset
-
 import torch
 from torch.utils.data import DataLoader
 from transformers import PretrainedConfig, set_seed
@@ -139,7 +117,7 @@ def transform_raw_data(dataset):
     # remove/rename fields
     name_mapping = {
                 "times_wv": "time_features",
-                FieldName.TARGET: "values",
+                "target": "values",
                 "attention_mask": "observed_mask",
             }
 
@@ -234,9 +212,9 @@ def create_test_dataloader_raw(
             "future_observed_mask",
         ]
 
-    transformed_data = transform_raw_data(dataset)
-    transformed_data = transformed_data.shuffle(seed=seed).flatten_indices()  # TODO add seed to args
-    mask_probability = 0. if config.has_labels else config.mask_probability# don't mask for fine-tuning
+    transformed_data = transform_raw_data(dataset).flatten_indices()
+    #transformed_data = transformed_data.shuffle(seed=seed)  # TODO add seed to args
+    mask_probability = 0. if config.has_labels else config.mask_probability # don't mask for fine-tuning
     return DataLoader(
         transformed_data,
         batch_size=batch_size,
@@ -260,7 +238,7 @@ def create_network_inputs(
     elif config.scaling == "std":
         scaler = InformerStdScaler(dim=1, keepdim=True)
     else:
-        scaler = InformerNOPScaler(dim=1, keepdim=True)
+        scaler = InformerNOPScaler(config)
 
     past_length = config.context_length + max(config.lags_sequence)
     # time feature
