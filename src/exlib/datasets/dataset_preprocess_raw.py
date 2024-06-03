@@ -98,8 +98,8 @@ def transform_raw_data_example(example):
     example['transposed_times_wv'] = np.array(example['times_wv']).T
     # divide by max value to constrain to [0,1]
     example = create_attention_mask(example)
-    example = normalize_by_channel(example, "transposed_times_wv")
-    example = normalize_all(example, "transposed_target") # normalize flux, flux_err by max overall
+    #example = normalize_by_channel(example, "transposed_times_wv")
+    #example = normalize_all(example, "transposed_target") # normalize flux, flux_err by max overall
     return example
 
 def transform_raw_data(dataset):
