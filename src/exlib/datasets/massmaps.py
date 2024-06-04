@@ -4,6 +4,8 @@ from typing import List, Optional, Tuple, Union
 from transformers import PretrainedConfig, PreTrainedModel
 import math
 import matplotlib.pyplot as plt
+import matplotlib
+import numpy as np
 
 DATASET_REPO = "BrachioLab/massmaps-cosmogrid-100k"
 MODEL_REPO = "BrachioLab/massmaps-conv"
@@ -210,7 +212,8 @@ class MassMapsAlignment(nn.Module):
     #     else: # none
     #         return align_void, align_cluster
 
-def show_example(groups, X, img_idx=0):
+def show_example(groups, X, img_idx=0, mode='contour'):
+    assert mode in ['contour', 'dim']
     massmaps_align = MassMapsAlignment()
     alignment_results = massmaps_align(groups, X, reduce='none')
     
@@ -237,3 +240,36 @@ def show_example(groups, X, img_idx=0):
                 axs[idx].set_title(f'void {p_void_[0][idx].item():.5f}\ncluster {p_cluster_[0][idx].item():.5f}\npurity {purity[0][idx].item():.5f}')
         axs[idx].axis('off')
     plt.show()
+
+
+
+def map_plotter(image, mask, ax=plt, type='dim'): 
+    default_cmap = matplotlib.rcParams['image.cmap']
+    cmap = plt.get_cmap(default_cmap)
+    gray_cmap = plt.get_cmap('gray')
+    
+    norm = plt.Normalize()
+    normed_image = norm(image)
+    # normed_image = np.clip((image - img_min) / (img_max - img_min) * 3, 0, 1)
+    rgb_image = cmap(normed_image)
+    if type == 'dim':
+        gray_image = (gray_cmap(normed_image) / 2)
+        mask_bool = np.repeat((mask > 0)[:,:,None], 4, axis=-1)
+        gray_image[mask_bool] = rgb_image[mask_bool]
+        ax.imshow(gray_image)
+    elif type == 'contour':
+        # 1. Find the contours of the mask
+        mask_bool = (mask > 0).astype(np.float32)
+        dilated_mask_bool = binary_dilation(mask_bool)
+        contours_original = measure.find_contours(mask_bool, 0.5)
+        contours_dilated = measure.find_contours(dilated_mask_bool, 0.51)
+
+        # 2. Overlay the contours on top of the original image
+        # fig, ax = plt.subplots()
+        ax.imshow(rgb_image)
+
+        for contour in contours_dilated:
+            ax.plot(contour[:, 1], contour[:, 0], linewidth=2, color='white')  # color can be changed as needed
+
+        for contour in contours_original:
+            ax.plot(contour[:, 1], contour[:, 0], linewidth=2, color='red')  # color can be changed as needed
