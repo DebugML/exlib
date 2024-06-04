@@ -9,9 +9,9 @@ import torchxrayvision as xrv
 import datasets as hfds
 import huggingface_hub as hfhub
 
-HF_DATA_REPO = "BrachioLab/chestxdet"
+HF_DATA_REPO = "BrachioLab/chestx"
 
-class ChestXDetDataset(torch.utils.data.Dataset):
+class ChestXDataset(torch.utils.data.Dataset):
     pathology_names = [
         "Atelectasis",
         "Cardiomegaly",
@@ -77,11 +77,11 @@ class ChestXDetDataset(torch.utils.data.Dataset):
 
 
 @dataclass
-class ChestXDetModelOutput:
+class ChestXModelOutput:
     logits: torch.FloatTensor
 
 
-class ChestXDetPathologyModel(nn.Module, hfhub.PyTorchModelHubMixin):
+class ChestXPathologyModel(nn.Module, hfhub.PyTorchModelHubMixin):
     def __init__(self):
         super().__init__()
         self.xrv_model = xrv.models.DenseNet(weights="densenet121-res224-nih") # NIH chest X-ray8
@@ -117,7 +117,7 @@ class ChestXDetPathologyModel(nn.Module, hfhub.PyTorchModelHubMixin):
         return out[:,pathol_idxs]
 
 
-class ChestXDetMetric(nn.Module):
+class ChestXMetric(nn.Module):
     def __init__(self):
         super().__init__()
 
