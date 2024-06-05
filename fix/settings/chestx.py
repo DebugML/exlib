@@ -126,7 +126,7 @@ def get_chestx_scores(baselines = ['patch', 'quickshift', 'watershed']):
                 masks = F.one_hot(groups(image)).permute(0,3,1,2)
                 score = metric(masks, structs_masks) # (N,H,W)
                 scores.append(score.mean(dim=(1,2)))
-            if i > 10:
+            if i > 24:
                 break 
         scores = torch.cat(scores)
         print(f"Avg alignment of {baseline} features: {scores.mean():.4f}")
