@@ -18,6 +18,8 @@ import numpy as np
 from scipy import ndimage as ndi
 from skimage.feature import peak_local_max
 
+# from collections import defaultdict
+
 
 class GridGroups(nn.Module):
     # Let's assume image is 224x224 and make 28-wide grids (i.e., 8x8 partitions)
@@ -108,6 +110,7 @@ def get_chestx_scores(baselines = ['patch', 'quickshift', 'watershed']):
     torch.manual_seed(1234)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=True)
 
+    # all_baselines_scores = defaultdict(list)
     all_baselines_scores = {}
     for i, item in enumerate(tqdm(dataloader)):
         for baseline in baselines:
@@ -128,7 +131,7 @@ def get_chestx_scores(baselines = ['patch', 'quickshift', 'watershed']):
                 print(all_baselines_scores)
                 if baseline in all_baselines_scores.keys():
                     scores = all_baselines_scores[baseline]
-                    scores = scores.append(score.mean(dim=(1,2)))
+                    scores.append(score.mean(dim=(1,2)))
                 else: 
                     scores = [score.mean(dim=(1,2))]
                 all_baselines_scores[baseline] = scores
