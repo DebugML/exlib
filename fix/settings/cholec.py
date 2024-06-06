@@ -8,9 +8,6 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import skimage
 
-import numpy as np
-from scipy import ndimage as ndi
-from skimage.feature import peak_local_max
 
 sys.path.append("../src")
 import exlib
@@ -102,13 +99,14 @@ def get_cholec_scores(baselines = ['patch', 'quickshift', 'watershed']):
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=True)
 
     all_baselines_scores = {}
-    for baseline in baselines:
-        if baseline == 'patch': # gridding 
-            extractor = GridGroups()
-        elif baseline == 'quickshift': # quickshift
-            extractor = QuickShiftGroups()
-        elif baseline == 'watershed':
-            extractor = WatershedGroups()
+    for i, item in enumerate(tqdm(dataloader)):
+        for baseline in baselines:
+            if baseline == 'patch': # gridding 
+                extractor = GridGroups()
+            elif baseline == 'quickshift': # quickshift
+                extractor = QuickShiftGroups()
+            elif baseline == 'watershed':
+                extractor = WatershedGroups()
 
         scores = []
         for i, item in enumerate(tqdm(dataloader)):
