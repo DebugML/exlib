@@ -8,7 +8,7 @@ from cholec import get_cholec_scores
 from chestx import get_chestx_scores
 from mass_maps import get_mass_maps_scores
 from supernova import get_supernova_scores
-# from politeness import get_politeness_scores
+from politeness import get_politeness_scores
 # from emotion import get_emotion_scores
 
 
@@ -17,7 +17,7 @@ all_settings_baselines = {
     'chestx': ['patch', 'quickshift', 'watershed'],
     'mass_maps': ['patch', 'quickshift', 'watershed'],
     'supernova': ['chunk'],
-    # 'politeness': ['words'],
+    'politeness': ['word', 'phrase', 'sentence'],
     # 'emotion': ['words']
 }
 
@@ -26,7 +26,7 @@ all_settings_methods = {
     'chestx': get_chestx_scores,
     'mass_maps': get_mass_maps_scores,
     'supernova': get_supernova_scores,
-    # 'politeness': get_politeness_scores,
+    'politeness': get_politeness_scores,
     # 'emotion': get_emotion_scores
 }
 
