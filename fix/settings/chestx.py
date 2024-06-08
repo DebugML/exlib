@@ -18,6 +18,8 @@ import numpy as np
 from scipy import ndimage as ndi
 from skimage.feature import peak_local_max
 
+# from collections import defaultdict
+
 
 class GridGroups(nn.Module):
     # Let's assume image is 224x224 and make 28-wide grids (i.e., 8x8 partitions)
@@ -108,33 +110,39 @@ def get_chestx_scores(baselines = ['patch', 'quickshift', 'watershed']):
     torch.manual_seed(1234)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=True)
 
+    # all_baselines_scores = defaultdict(list)
     all_baselines_scores = {}
-    for baseline in baselines:
-        print('BASELINE:', baseline)
-        if baseline == 'patch': # gridding 
-            groups = GridGroups()
-        elif baseline == 'quickshift': # quickshift
-            groups = QuickShiftGroups()
-        elif baseline == 'watershed': # watershift
-            groups = WatershedGroups()
-        
-        scores = []
-        for i, item in enumerate(tqdm(dataloader)):
+    for i, item in enumerate(tqdm(dataloader)):
+        for baseline in baselines:
+            print('BASELINE:', baseline)
+            if baseline == 'patch': # gridding 
+                groups = GridGroups()
+            elif baseline == 'quickshift': # quickshift
+                groups = QuickShiftGroups()
+            elif baseline == 'watershed': # watershed
+                groups = WatershedGroups()
+    
             image = item["image"]
             with torch.no_grad():
                 structs_masks = item["structs"]
                 masks = F.one_hot(groups(image)).permute(0,3,1,2)
                 score = metric(masks, structs_masks) # (N,H,W)
-                scores.append(score.mean(dim=(1,2)))
-            if i > 24:
-                break 
-        scores = torch.cat(scores)
+
+                print(all_baselines_scores)
+                if baseline in all_baselines_scores.keys():
+                    scores = all_baselines_scores[baseline]
+                    scores.append(score.mean(dim=(1,2)))
+                else: 
+                    scores = [score.mean(dim=(1,2))]
+                all_baselines_scores[baseline] = scores
+        if i > 24:
+            break 
+
+    for baseline in baselines:
+        scores = torch.cat(all_baselines_scores[baseline])
         print(f"Avg alignment of {baseline} features: {scores.mean():.4f}")
         all_baselines_scores[baseline] = scores
 
     return all_baselines_scores
         
 
-# if __name__ == "__main__": 
-#     get_chestx_scores()
-    

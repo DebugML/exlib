@@ -7,6 +7,7 @@ from datasets import load_dataset
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import skimage
+import numpy as np
 
 import numpy as np
 from scipy import ndimage as ndi
@@ -102,29 +103,38 @@ def get_cholec_scores(baselines = ['patch', 'quickshift', 'watershed']):
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=True)
 
     all_baselines_scores = {}
-    for baseline in baselines:
-        if baseline == 'patch': # gridding 
-            extractor = GridGroups()
-        elif baseline == 'quickshift': # quickshift
-            extractor = QuickShiftGroups()
-        elif baseline == 'watershed':
-            extractor = WatershedGroups()
-
-        scores = []
-        for i, item in enumerate(tqdm(dataloader)):
+    for i, item in enumerate(tqdm(dataloader)):
+        for baseline in baselines:
+            print('BASELINE:', baseline)
+            if baseline == 'patch': # gridding 
+                groups = GridGroups()
+            elif baseline == 'quickshift': # quickshift
+                groups = QuickShiftGroups()
+            elif baseline == 'watershed': # watershed
+                groups = WatershedGroups()
+    
             image = item["image"]
             with torch.no_grad():
                 organs_masks = F.one_hot(item["organs"]).permute(0,3,1,2)
-                masks = F.one_hot(extractor(image)).permute(0,3,1,2)
-                
+                masks = F.one_hot(groups(image)).permute(0,3,1,2)
                 score = metric(masks, organs_masks) # (N,H,W)
-                scores.append(score.mean(dim=(1,2)))
-            if i > 24:
-                break
-                
-        scores = torch.cat(scores)
+
+                print(all_baselines_scores)
+                if baseline in all_baselines_scores.keys():
+                    scores = all_baselines_scores[baseline]
+                    scores.append(score.mean(dim=(1,2)))
+                else: 
+                    scores = [score.mean(dim=(1,2))]
+                all_baselines_scores[baseline] = scores
+        if i > 24:
+            break 
+
+    
+    for baseline in baselines:
+        scores = torch.cat(all_baselines_scores[baseline])
         print(f"Avg alignment of {baseline} features: {scores.mean():.4f}")
         all_baselines_scores[baseline] = scores
-    
+
     return all_baselines_scores
+    
     
