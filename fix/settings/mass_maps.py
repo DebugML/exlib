@@ -138,6 +138,52 @@ class MassMapsWatershed(nn.Module):
         return daf_preds
 
 
+class MassMapsOracle(nn.Module):
+    def __init__(self, sz=(8, 8)):
+        """
+        sz : int, number of patches per side.
+        """
+        super().__init__()
+        self.sz = sz
+    
+    def forward(self, images):
+        """
+        input: images (N, C=1, H, W)
+        output: daf_preds (N, M, H, W)
+        """
+        daf_preds = []
+        stds = torch.std(images.flatten(2), dim=-1)
+        N, C, H, W = images.shape
+        # import pdb; pdb.set_trace()
+        masks = torch.zeros(N, 3, H, W).to(images.device)
+        masks[:,0] = (images < 0)[:,0]
+        masks[:,1] = (images > 3 * stds[:,:,None,None])[:,0]
+        masks[:,2] = torch.logical_not(masks[:,1].logical_or(masks[:,0]))
+        daf_preds = masks
+        return daf_preds
+
+
+class MassMapsOne(nn.Module):
+    def __init__(self, sz=(8, 8)):
+        """
+        sz : int, number of patches per side.
+        """
+        super().__init__()
+        self.sz = sz
+    
+    def forward(self, images):
+        """
+        input: images (N, C=1, H, W)
+        output: daf_preds (N, M, H, W)
+        """
+        daf_preds = []
+        stds = torch.std(images.flatten(2), dim=-1)
+        N, C, H, W = images.shape
+        masks = torch.ones(N, 1, H, W).to(images.device)
+        daf_preds = masks
+        return daf_preds
+
+
 def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed']): # currently we just assume we are running everything, need to update though to be able to specify a baseline to run
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     
