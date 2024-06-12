@@ -105,15 +105,14 @@ class CholecMetric(nn.Module):
         Gp = groups_pred.bool().long()
         Gt = groups_true.bool().long()
 
-        # Make (N,P,T)-shaped lookup tables for the intersection and union
+        # Make (N,P,T)-shaped lookup tables for the intersection-over-trues
         inters = (Gp.view(N,P,1,H,W) * Gt.view(N,1,T,H,W)).sum(dim=(-1,-2))
-        unions = (Gp.view(N,P,1,H,W) + Gt.view(N,1,T,H,W)).clamp(0,1).sum(dim=(-1,-2))
-        ious = inters / unions  # (N,P,T)
-        ious[~ious.isfinite()] = 0 # Set the bad values to a score of zero
-        iou_maxs = ious.max(dim=-1).values   # (N,P): max_{gt in Gt} iou(gp, gt)
+        iogs = inters / Gt.view(N,1,T,H,W).sum(dim=(-1,-2)) # (N,P,T)
+        iogs[~iogs.isfinite()] = 0 # Set the bad values to a score of zero
+        iog_maxs = iogs.max(dim=-1).values   # (N,P): max_{gt in Gt} iog(gp, gt)
 
         # sum_{gp in group_preds(feature)} iou_max(gp, Gt)
-        pred_aligns_sum = (Gp * iou_maxs.view(N,P,1,1)).sum(dim=1) # (N,H,W)
+        pred_aligns_sum = (Gp * iog_maxs.view(N,P,1,1)).sum(dim=1) # (N,H,W)
         score = pred_aligns_sum / Gp.sum(dim=1) # (N,H,W), division is the |Gp(feaure)|
         score[~score.isfinite()] = 0    # Make div-by-zero things zero
         return score    # (N,H,W), a score for each feature

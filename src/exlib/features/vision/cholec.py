@@ -15,7 +15,7 @@ from skimage.feature import peak_local_max
 
 sys.path.append("../../src")
 import exlib
-from exlib.datasets.cholecystectomy import CholecDataset, CholecModel, CholecMetric
+from exlib.datasets.cholec import CholecDataset, CholecModel, CholecMetric
 
 class GridGroups(nn.Module):
     # Let's assume image is 360x640 and make 40x40 grids (i.e., 9x16 partitions)
@@ -94,18 +94,19 @@ class WatershedGroups(nn.Module):
         return segs.to(x.device)
         
 
-def get_cholec_scores(baselines = ['patch', 'quickshift', 'watershed']):
-    dataset = CholecDataset(split="test")
-    gonogo_model = CholecModel.from_pretrained("BrachioLab/cholecystectomy_gonogo").eval()
-
-    metric = CholecMetric()
-    torch.manual_seed(1234)
+def get_cholec_scores(
+    dataset = CholecDataset(split="test"),
+    metric = CholecMetric(),
+    baselines = ['patch', 'quickshift', 'watershed'],
+    N = 100,
+    batch_size = 4,
+):
+    dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=True)
 
     all_baselines_scores = {}
-    for i, item in enumerate(tqdm(dataloader)):
+    for item in tqdm(dataloader):
         for baseline in baselines:
-            print('BASELINE:', baseline)
             if baseline == 'patch': # gridding 
                 groups = GridGroups()
             elif baseline == 'quickshift': # quickshift
@@ -119,15 +120,12 @@ def get_cholec_scores(baselines = ['patch', 'quickshift', 'watershed']):
                 masks = F.one_hot(groups(image)).permute(0,3,1,2)
                 score = metric(masks, organs_masks) # (N,H,W)
 
-                print(all_baselines_scores)
                 if baseline in all_baselines_scores.keys():
                     scores = all_baselines_scores[baseline]
                     scores.append(score.mean(dim=(1,2)))
                 else: 
                     scores = [score.mean(dim=(1,2))]
                 all_baselines_scores[baseline] = scores
-        if i > 24:
-            break 
 
     
     for baseline in baselines:
