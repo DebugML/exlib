@@ -14,7 +14,7 @@ from datasets import load_dataset
 import torch.nn as nn
 import sentence_transformers
 
-sys.path.append(os.path.abspath('../src/exlib/utils'))
+sys.path.append(os.path.abspath('../../src/exlib/utils'))
 from projection_helper import project_points_onto_axes
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

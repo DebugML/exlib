@@ -3,13 +3,13 @@ import os.path
 import torch
 import sys
 
-sys.path.append("./settings")
-from cholec import get_cholec_scores
-from chestx import get_chestx_scores
-from mass_maps import get_mass_maps_scores
-from supernova import get_supernova_scores
-from politeness import get_politeness_scores
-from emotion import get_emotion_scores
+sys.path.append("../src/exlib/features/fix")
+from vision.cholec import get_cholec_scores
+from vision.chestx import get_chestx_scores
+from vision.mass_maps import get_mass_maps_scores
+from time_series.supernova import get_supernova_scores
+from text.politeness import get_politeness_scores
+from text.emotion import get_emotion_scores
 
 
 all_settings_baselines = {
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print('SETTING:', args.setting)
-    scores_filepath = f'results/{args.setting}/all_baselines_scores'
+    scores_filepath = f'results/{args.setting}/all_fix_baselines_scores' # need to have these results folders set up
     if os.path.isfile(scores_filepath):
         print(f'{scores_filepath} already exists')
     else:
@@ -53,10 +53,5 @@ if __name__ == "__main__":
         # dic, where name (patch) of BL and value is the patch BL number
         
         print(all_baselines_scores)
-        torch.save(all_baselines_scores, f'results/{args.setting}/all_baselines_scores')
+        torch.save(all_baselines_scores, scores_filepath)
     
-        
-    # for baseline in all_baselines_list: 
-        
-    
-# generate the latex row with all results for baseline done in notebook
