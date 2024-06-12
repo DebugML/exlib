@@ -6,7 +6,7 @@ import sys
 sys.path.append("../src/exlib/features/fix")
 from vision.cholec import get_cholec_scores
 from vision.chestx import get_chestx_scores
-from vision.mass_maps import get_mass_maps_scores
+from .fix_massmaps import get_massmaps_scores
 from time_series.supernova import get_supernova_scores
 from text.politeness import get_politeness_scores
 from text.emotion import get_emotion_scores
@@ -24,7 +24,7 @@ all_settings_baselines = {
 all_settings_methods = {
     'cholec': get_cholec_scores,
     'chestx': get_chestx_scores,
-    'mass_maps': get_mass_maps_scores,
+    'mass_maps': get_massmaps_scores,
     'supernova': get_supernova_scores,
     'politeness': get_politeness_scores,
     'emotion': get_emotion_scores
