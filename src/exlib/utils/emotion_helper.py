@@ -85,8 +85,6 @@ def project_points_onto_axes(points, x_point1, x_point2, y_point1, y_point2):
     # Return the magnitudes of the projections as numpy arrays
     return np.array(x_projection), np.array(y_projection), np.array(x_dist), np.array(y_dist)
 
-
-
 def line_intersection(x_pts, y_pts):  
     line1 = ((x_pts[0], y_pts[0]), (x_pts[1], y_pts[1]))
     line2 = ((x_pts[2], y_pts[2]), (x_pts[3], y_pts[3]))
@@ -104,3 +102,10 @@ def line_intersection(x_pts, y_pts):
     x = det(d, xdiff) / div
     y = det(d, ydiff) / div
     return x, y
+
+def load_emotions():
+    emotions_dict = {"PV" : ["Happy", "Pleased", "Delighted", "Excited", "Satisfied"],
+                        "NV" : ["Miserable", "Frustrated", "Sad", "Depressed", "Afraid"],
+                        "HA" : ["Astonished", "Alarmed", "Angry", "Afraid", "Excited"],
+                        "LA" : ["Tired", "Sleepy", "Calm", "Satisfied", "Depressed"]}
+    return emotions_dict

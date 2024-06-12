@@ -2,6 +2,9 @@ import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
+from .emotion_helper import project_points_onto_axes, line_intersection, load_emotions
+from .politeness_helper import load_lexica
+
 def hatch_dim_and_outline(image, mask, c=0.6): 
     black = np.zeros(image.shape)
     dimmed_image = (c*image + (1-c)*black)
