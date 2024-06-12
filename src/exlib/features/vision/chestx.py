@@ -102,19 +102,19 @@ class WatershedGroups(nn.Module):
         return segs.to(x.device)
         
 
-def get_chestx_scores(baselines = ['patch', 'quickshift', 'watershed']):
-    dataset = ChestXDataset(split="test")
-    pathols_model = ChestXPathologyModel().from_pretrained("BrachioLab/chestx_pathols").eval()
+def get_chestx_scores(
+    dataset = ChestXDataset(split="test"),
+    metric = ChestXMetric(),
+    baselines = ['patch', 'quickshift', 'watershed'],
+    N = 100,
+    batch_size = 4,
+):
+    dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    metric = ChestXMetric()
-    torch.manual_seed(1234)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=True)
-
-    # all_baselines_scores = defaultdict(list)
     all_baselines_scores = {}
-    for i, item in enumerate(tqdm(dataloader)):
+    for item in tqdm(dataloader):
         for baseline in baselines:
-            print('BASELINE:', baseline)
             if baseline == 'patch': # gridding 
                 groups = GridGroups()
             elif baseline == 'quickshift': # quickshift
@@ -128,15 +128,12 @@ def get_chestx_scores(baselines = ['patch', 'quickshift', 'watershed']):
                 masks = F.one_hot(groups(image)).permute(0,3,1,2)
                 score = metric(masks, structs_masks) # (N,H,W)
 
-                print(all_baselines_scores)
                 if baseline in all_baselines_scores.keys():
                     scores = all_baselines_scores[baseline]
                     scores.append(score.mean(dim=(1,2)))
                 else: 
                     scores = [score.mean(dim=(1,2))]
                 all_baselines_scores[baseline] = scores
-        if i > 24:
-            break 
 
     for baseline in baselines:
         scores = torch.cat(all_baselines_scores[baseline])
