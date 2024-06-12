@@ -3,31 +3,33 @@ import os.path
 import torch
 import sys
 
-sys.path.append("../src/exlib/features/fix")
-from vision.cholec import get_cholec_scores
-from vision.chestx import get_chestx_scores
-from .fix_massmaps import get_massmaps_scores
-from time_series.supernova import get_supernova_scores
-from text.politeness import get_politeness_scores
-from text.emotion import get_emotion_scores
+# sys.path.append("../src/exlib/features/fix")
+sys.path.append("../src")
+from exlib.features.vision.cholec import get_cholec_scores
+from exlib.features.vision.chestx import get_chestx_scores
+sys.path.append(".")
+from fix_massmaps import get_massmaps_scores
+from exlib.features.time_series.supernova import get_supernova_scores
+from exlib.features.text.politeness import get_politeness_scores
+# from exlib.features.text.emotion import get_emotion_scores
 
 
 all_settings_baselines = {
     'cholec': ['patch', 'quickshift', 'watershed'],
     'chestx': ['patch', 'quickshift', 'watershed'],
-    'mass_maps': ['patch', 'quickshift', 'watershed'],
+    'massmaps': ['patch', 'quickshift', 'watershed'],
     'supernova': ['chunk'],
     'politeness': ['word', 'phrase', 'sentence'],
-    'emotion': ['word', 'phrase', 'sentence']
+    # 'emotion': ['word', 'phrase', 'sentence']
 }
 
 all_settings_methods = {
     'cholec': get_cholec_scores,
     'chestx': get_chestx_scores,
-    'mass_maps': get_massmaps_scores,
+    'massmaps': get_massmaps_scores,
     'supernova': get_supernova_scores,
     'politeness': get_politeness_scores,
-    'emotion': get_emotion_scores
+    # 'emotion': get_emotion_scores
 }
 
 

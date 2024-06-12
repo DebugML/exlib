@@ -1,13 +1,17 @@
+import torch
 from datasets import load_dataset
+from collections import defaultdict
+from tqdm.auto import tqdm
+import torch.nn.functional as F
 from exlib.datasets import massmaps
 from exlib.datasets.massmaps import MassMapsConvnetForImageRegression
 # Alignment
 from exlib.datasets.massmaps import MassMapsAlignment
 
-from exlib.features.massmaps import MassMapsWatershed, MassMapsQuickshift, MassMapsPatch, MassMapsOracle, MassMapsOne
+from exlib.features.vision.massmaps import MassMapsWatershed, MassMapsQuickshift, MassMapsPatch, MassMapsOracle, MassMapsOne
 
 
-def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed']): # currently we just assume we are running everything, need to update though to be able to specify a baseline to run
+def get_massmaps_scores(baselines = ['patch', 'quickshift', 'watershed']): # currently we just assume we are running everything, need to update though to be able to specify a baseline to run
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     
     # Load model
