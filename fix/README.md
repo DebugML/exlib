@@ -1,21 +1,29 @@
 # The FIX Benchmark: Extracting Features Interpretable to eXperts
 --------------------------------------------------------------------------------
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/exlib/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/BrachioLab/exlib/blob/master/LICENSE)
 
 ## Overview
 FIX is a benchmark for extracting features that are interpretable to real-world experts, spanning diverse data modalities and applications, from doctors performing gall bladder surgery to cosmologists studying supernovae.
 
-
-For more information, please visit [our website](https://brachiolab.github.io/fix/) or read the main FIX paper ().
-For questions and feedback, please post on the [discussion board](https://github.com/exlib/discussions).
+For more information, please visit [our website](https://brachiolab.github.io/fix/) or read the main FIX [paper]().
+<!-- For questions and feedback, please post on the [discussion board](https://github.com/BrachioLab/exlib/discussions). -->
 
 ## Getting Started
-Tutorial notebooks for each FIX setting are located in the notebooks/fix folder.
-The main dependencies needed to run them are all installed in exlib or alternatively you can use our [Dockerfile]().
-
+Tutorial notebooks for each FIX setting are located in the [notebooks/fix](https://github.com/BrachioLab/exlib/blob/master/notebooks/fix) folder.
+The main dependencies needed to run them are all installed in exlib or alternatively you can use our [Dockerfile](https://github.com/BrachioLab/dockerfiles/blob/main/riceric22/exlib/Dockerfile).
 
 ## Datasets
+FIX currently includes 6 datasets, which we've briefly listed below. For full dataset descriptions, please see our [paper]().
+
+| Dataset                 | Modality    | Labeled splits   | Expert Features  | Citations                                            |
+| ----------------------- | ----------- | ---------------- | ---------------- |----------------------------------------------------- |
+| massmaps                | Image       | train, val, test | Implicit         |                                                      |
+| supernova               | Time Series | train, val, test | Implicit         |                                                      | 
+| multilingual_politeness | Text        | train, val, test | Implicit         |                                                      |
+| emotion                 | Text        | train, val, test | Implicit         |                                                      |
+| chestx                  | Image       | train, test      | Explicit         |                                                      |
+| cholec                  | Image       | train, test      | Explicit         |                                                      |
 
 
 ## Citation
