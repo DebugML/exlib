@@ -1,12 +1,18 @@
 # The FIX Benchmark: Extracting Features Interpretable to eXperts
+--------------------------------------------------------------------------------
+
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/exlib/blob/master/LICENSE)
 
 ## Overview
+FIX is a benchmark for extracting features that are interpretable to real-world experts, spanning diverse data modalities and applications, from doctors performing gall bladder surgery to cosmologists studying supernovae.
 
-Paper Link:
+
+For more information, please visit [our website](https://brachiolab.github.io/fix/) or read the main FIX paper ().
+For questions and feedback, please post on the [discussion board](https://github.com/exlib/discussions).
 
 ## Getting Started
 Tutorial notebooks for each FIX setting are located in the notebooks/fix folder.
-The main dependencies needed to run them are all installed in exlib or alternatively you can use our Dockerfile ().
+The main dependencies needed to run them are all installed in exlib or alternatively you can use our [Dockerfile]().
 
 
 ## Datasets
