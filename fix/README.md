@@ -2,19 +2,25 @@
 
 ## Overview
 
+Paper Link:
 
 ## Getting Started
 Tutorial notebooks for each FIX setting are located in the notebooks/fix folder.
 The main dependencies needed to run them are all installed in exlib or alternatively you can use our Dockerfile ().
 
+
+## Datasets
+
+
 ## Citation
 Please cite the paper as follows if you use the data or code from the FIX benchmark:
 ```
-@article{,
+@article{jin2024fix,
   title={The FIX Benchmark: Extracting Features Interpretable to eXperts},
-  author={},
+  author={Helen Jin and Shreya Havaldar and Chaehyeon Kim and Anton Xue and Weiqiu You and Helen Qu and Marco Gatti and Daniel A Hashimoto and Bhuvnesh Jain and Amin Madani and Masao Sako and Lyle Ungar and Eric Wong},
   booktitle={Thirty-eighth Conference on Neural Information Processing Systems Datasets and Benchmarks Track},
-  year={2024}
+  year={2024},
+  primaryClass={id='cs.LG' full_name='Machine Learning' is_active=True alt_name=None in_archive='cs' is_general=False description='Papers on all aspects of machine learning research (supervised, unsupervised, reinforcement learning, bandit problems, and so on) including also robustness, explanation, fairness, and methodology. cs.LG is also an appropriate primary category for applications of machine learning methods.'}
 }
 ```
 
