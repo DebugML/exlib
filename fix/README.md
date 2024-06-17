@@ -13,7 +13,7 @@ The FIX package contains:
 
 In addition, we include an example script that runs all baselines for every setting.
 
-For more information, please visit [our website](https://brachiolab.github.io/fix/) or read the main FIX [paper]().
+For more information, please visit [our website](https://brachiolab.github.io/fix/) or read the main FIX [paper](https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf).
 <!-- For questions and feedback, please post on the [discussion board](https://github.com/BrachioLab/exlib/discussions). -->
 
 ## Getting Started
@@ -43,7 +43,7 @@ To run all baselines for every dataset setting, you can run the following script
 The baseline feature extractors for differenet data modalities (e.g. text, time series, data) are located in [../src/exlib/features](https://github.com/BrachioLab/exlib/blob/master/src/features) folder.
 
 ## Datasets
-FIX currently includes 6 datasets, which we've briefly listed below. For full dataset descriptions, please see our [paper]().
+FIX currently includes 6 datasets, which we've briefly listed below. For full dataset descriptions, please see our [paper](https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf).
 
 | Dataset                 | Modality    | Labeled splits   | Expert Features  |
 | ----------------------- | ----------- | ---------------- | ---------------- |
