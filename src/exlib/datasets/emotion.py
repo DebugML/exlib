@@ -127,3 +127,60 @@ class Metric(nn.Module):
     def forward(self, zp, x=None, y=None, z=None, reduce=True, **kwargs): 
         pass
 
+
+def get_emotion_scores(baselines = ['word', 'phrase', 'sentence']):
+    dataset = EmotionDataset("test")
+    
+    model = EmotionClassifier()
+    model.to(device)
+    model.eval()
+
+    metric = Metric()
+    torch.manual_seed(1234)
+    dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
+
+    alignment_scores_all = {}
+    for baseline in baselines:
+        print(f"---- {baseline} Level Groups ----")
+        
+        baseline_scores = []
+        for i, batch in enumerate(tqdm(dataloader)):
+            word_lists = batch['word_list']
+            word_lists = list(map(list, zip(*word_lists)))
+            processed_word_lists = []
+            for word_list in word_lists:
+                processed_word_lists.append([word for word in word_list if word != ''])
+            
+            for word_list in processed_word_lists:
+                groups = []
+                if baseline == 'word':
+                    for word in word_list:
+                        groups.append([word])
+                elif baseline == 'phrase':
+                    #each group is 3 consecutive words
+                    for i in range(0, len(word_list), 3):
+                        groups.append(word_list[i:i+3])
+                elif baseline == 'sentence':
+                    #reconstruct sentences from word list
+                    sentence = ""
+                    for word in word_list:
+                        sentence += word + " "
+                        if word[-1] == "." or word[-1] == "!" or word[-1] == "?":
+                            groups.append(sentence.split())
+                            sentence = ""
+                    if(len(sentence) > 0):
+                        groups.append(sentence.split())
+                # print(groups)
+                alignments = torch.tensor(metric.calculate_group_alignment(groups))
+                score = alignments.mean()
+                baseline_scores.append(score)
+            
+            # if i > 1:
+            #     break
+                
+        print(baseline_scores)    
+        baseline_scores = torch.stack(baseline_scores)
+        alignment_scores_all[baseline] = baseline_scores
+    
+    print(alignment_scores_all)
+    return alignment_scores_all
