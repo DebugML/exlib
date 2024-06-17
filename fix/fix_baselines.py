@@ -3,22 +3,19 @@ import os.path
 import torch
 import sys
 
-# sys.path.append("../src/exlib/features/fix")
-sys.path.append("../src")
-from exlib.features.vision.cholec import get_cholec_scores
-from exlib.features.vision.chestx import get_chestx_scores
-sys.path.append(".")
-from fix_massmaps import get_massmaps_scores
-from exlib.features.time_series.supernova import get_supernova_scores
-from exlib.features.text.politeness import get_politeness_scores
-# from exlib.features.text.emotion import get_emotion_scores
+from settings.cholec import get_cholec_scores
+from settings.chestx import get_chestx_scores
+from settings.massmaps import get_massmaps_scores
+from settings.supernova import get_supernova_scores
+from settings.politeness import get_politeness_scores
+from settings.emotion import get_emotion_scores
 
 
 all_settings_baselines = {
     'cholec': ['patch', 'quickshift', 'watershed'],
     'chestx': ['patch', 'quickshift', 'watershed'],
     'massmaps': ['patch', 'quickshift', 'watershed'],
-    'supernova': ['chunk'],
+    'supernova': ['chunk'], # needs to be updated to include chunk size
     'politeness': ['word', 'phrase', 'sentence'],
     # 'emotion': ['word', 'phrase', 'sentence']
 }
@@ -52,7 +49,7 @@ if __name__ == "__main__":
         get_scores = all_settings_methods[args.setting]
     
         all_baselines_scores = get_scores(baselines_list)
-        # dic, where name (patch) of BL and value is the patch BL number
+        # dic, where name (e.g. patch) of BL and value is the patch BL number
         
         print(all_baselines_scores)
         torch.save(all_baselines_scores, scores_filepath)
