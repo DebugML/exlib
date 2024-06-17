@@ -1,17 +1,46 @@
 # The FIX Benchmark: Extracting Features Interpretable to eXperts
---------------------------------------------------------------------------------
+<!-- -------------------------------------------------------------------------------- -->
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/BrachioLab/exlib/blob/master/LICENSE)
 
 ## Overview
-FIX is a benchmark for extracting features that are interpretable to real-world experts, spanning diverse data modalities and applications, from doctors performing gall bladder surgery to cosmologists studying supernovae.
+FIX is a benchmark for extracting features that are interpretable to real-world experts, spanning diverse data modalities and applications, from doctors performing gall bladder surgery to cosmologists studying supernovae. 
+
+The FIX package contains:
+
+ * Data loaders that automatically handle data downloading, processing, and splitting, and
+ * Dataset evaluators that standardize model evaluation for each dataset.
+
+In addition, we include an example script that runs all baselines for every setting.
 
 For more information, please visit [our website](https://brachiolab.github.io/fix/) or read the main FIX [paper]().
 <!-- For questions and feedback, please post on the [discussion board](https://github.com/BrachioLab/exlib/discussions). -->
 
 ## Getting Started
-Tutorial notebooks for each FIX setting are located in the [notebooks/fix](https://github.com/BrachioLab/exlib/blob/master/notebooks/fix) folder.
+### Installation
+To use FIX, you must first install the exlib package (which has a separate README outside this FIX folder), as follows:
+```
+pip install exlib
+```
+
+If you have exlib already installed, please check that you have the latest version:
+```
+python -c "import exlib; print(exlib.__version__)"
+# This should print "1.0.0". If it does not, update the package by running:
+pip install -U exlib
+
+```
+
+### FIX Notebooks
+Tutorial notebooks for each FIX setting are located in the [../notebooks/fix](https://github.com/BrachioLab/exlib/blob/master/notebooks/fix) folder.
 The main dependencies needed to run them are all installed in exlib or alternatively you can use our [Dockerfile](https://github.com/BrachioLab/dockerfiles/blob/main/riceric22/exlib/Dockerfile).
+
+### FIX Baselines
+To run all baselines for every dataset setting, you can run the following script:
+```
+./run_fix_baselines.sh
+```
+The baseline feature extractors for differenet data modalities (e.g. text, time series, data) are located in [../src/exlib/features](https://github.com/BrachioLab/exlib/blob/master/src/features) folder.
 
 ## Datasets
 FIX currently includes 6 datasets, which we've briefly listed below. For full dataset descriptions, please see our [paper]().
@@ -38,7 +67,7 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
 ```
 
 ### Original Datasets Citations
-#### Mass Maps
+#### Mass Maps:
 ```
 @article{Kacprzak_2023,
    title={CosmoGridV1: a simulated 𝗐CDM theory prediction for map-level cosmological inference},
@@ -53,7 +82,7 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
    year={2023},
    month=feb, pages={050} }
 ```
-#### Supernova
+#### Supernova:
 ```
 @misc{theplasticcteam2018photometric,
       title={The Photometric LSST Astronomical Time-series Classification Challenge (PLAsTiCC): Data set}, 
@@ -65,7 +94,7 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
 }
 ```
 
-#### Multilingual Politeness
+#### Multilingual Politeness:
 ```
 @inproceedings{havaldar-etal-2023-multilingual,
     title = "Multilingual Language Models are not Multicultural: A Case Study in Emotion",
@@ -90,7 +119,7 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
 }
 ```
 
-#### Emotion
+#### Emotion:
 ```
 @inproceedings{demszky-etal-2020-goemotions,
     title = "{G}o{E}motions: A Dataset of Fine-Grained Emotions",
@@ -130,7 +159,7 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
 }
 ```
 
-#### Laparoscopic Cholecystectomy Surgery
+#### Laparoscopic Cholecystectomy Surgery:
 ```
 @article{stauder2016tum,
   title={The TUM LapChole dataset for the M2CAI 2016 workflow challenge},

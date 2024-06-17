@@ -1,30 +1,18 @@
-
 import sys
 sys.path.append('../src')
 import exlib
 import torch
-from datasets import load_dataset
-from exlib.datasets import massmaps
-from exlib.datasets.massmaps import MassMapsConvnetForImageRegression
 
 # Baseline
 from skimage.segmentation import watershed, quickshift
 from scipy import ndimage
 from skimage.feature import peak_local_max
-import sys
-sys.path.append('../src')
 from exlib.explainers.common import convert_idx_masks_to_bool, patch_segmenter
 import torch
 import torch.nn as nn
 import numpy as np
 import cv2
 
-from collections import defaultdict
-import torch.nn.functional as F
-from tqdm.auto import tqdm
-
-# Alignment
-from exlib.datasets.massmaps import MassMapsAlignment
 
 
 class MassMapsPatch(nn.Module):
@@ -183,72 +171,3 @@ class MassMapsOne(nn.Module):
         daf_preds = masks
         return daf_preds
 
-
-def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed']): # currently we just assume we are running everything, need to update though to be able to specify a baseline to run
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    
-    # Load model
-    model = MassMapsConvnetForImageRegression.from_pretrained(massmaps.MODEL_REPO) # BrachioLab/massmaps-conv
-    model = model.to(device)
-    
-    # Load data
-    train_dataset = load_dataset(massmaps.DATASET_REPO, split='train') # BrachioLab/massmaps-cosmogrid-100k
-    val_dataset = load_dataset(massmaps.DATASET_REPO, split='validation')
-    test_dataset = load_dataset(massmaps.DATASET_REPO, split='test')
-    train_dataset.set_format('torch', columns=['input', 'label'])
-    val_dataset.set_format('torch', columns=['input', 'label'])
-    test_dataset.set_format('torch', columns=['input', 'label'])
-    
-    massmaps_align = MassMapsAlignment()
-    
-    # Eval
-    watershed_baseline = MassMapsWatershed().to(device)
-    watershed_norm_05_baseline = MassMapsWatershed(compactness=0.5, normalize=True).to(device)
-    watershed_norm_1_baseline = MassMapsWatershed(compactness=1, normalize=True).to(device)
-    quickshift_baseline = MassMapsQuickshift().to(device)
-    patch_baseline = MassMapsPatch().to(device)
-    
-    baselines = {
-        'watershed': watershed_baseline,
-        'watershed_norm_05': watershed_norm_05_baseline,
-        'watershed_norm_1': watershed_norm_1_baseline,
-        'quickshift': quickshift_baseline,
-        'patch': patch_baseline
-    }
-    
-    batch_size = 5
-    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size)
-
-    
-    model.eval()
-    mse_loss_all = 0
-    total = 0
-    alignment_scores_all = defaultdict(list)
-    
-    with torch.no_grad():
-        for bi, batch in tqdm(enumerate(test_dataloader), total=len(test_dataloader)):
-            # if bi % 100 != 0:
-            #     continue
-            X = batch['input'].to(device)
-            y = batch['label'].to(device)
-            out = model(X)
-            # loss
-            loss = F.mse_loss(out, y, reduction='none')
-            mse_loss_all = mse_loss_all + loss.sum(0)
-            total += X.shape[0]
-    
-            # baseline
-            for name, baseline in baselines.items():
-                groups = baseline(X)
-    
-                # alignment
-                alignment_scores = massmaps_align(groups, X)
-                alignment_scores_all[name].extend(alignment_scores.flatten(1).cpu().numpy().tolist())
-            
-            
-                
-    loss_avg = mse_loss_all / total
-    
-    print(f'Omega_m loss {loss_avg[0].item():.4f}, sigma_8 loss {loss_avg[1].item():.4f}, avg loss {loss_avg.mean().item():.4f}')
-
-    return alignment_scores_all

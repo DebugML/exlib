@@ -9,6 +9,13 @@ import torchxrayvision as xrv
 import datasets as hfds
 import huggingface_hub as hfhub
 
+import sys
+from tqdm import tqdm
+sys.path.append("../src")
+import exlib
+from exlib.features.vision.chestx import GridGroups, QuickShiftGroups, WatershedGroups
+
+
 HF_DATA_REPO = "BrachioLab/chestx"
 
 class ChestXDataset(torch.utils.data.Dataset):
@@ -149,4 +156,48 @@ class ChestXMetric(nn.Module):
         score = pred_aligns_sum / Gp.sum(dim=1) # (N,H,W), division is the |Gp(feaure)|
         score[~score.isfinite()] = 0    # Make div-by-zero things zero
         return score    # (N,H,W), a score for each feature
+
+
+
+def get_chestx_scores(
+    dataset = ChestXDataset(split="test"),
+    metric = ChestXMetric(),
+    baselines = ['patch', 'quickshift', 'watershed'],
+    N = 100,
+    batch_size = 4,
+):
+    dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+    all_baselines_scores = {}
+    for item in tqdm(dataloader):
+        for baseline in baselines:
+            if baseline == 'patch': # gridding 
+                groups = GridGroups()
+            elif baseline == 'quickshift': # quickshift
+                groups = QuickShiftGroups()
+            elif baseline == 'watershed': # watershed
+                groups = WatershedGroups()
+    
+            image = item["image"]
+            with torch.no_grad():
+                structs_masks = item["structs"]
+                masks = F.one_hot(groups(image)).permute(0,3,1,2)
+                score = metric(masks, structs_masks) # (N,H,W)
+
+                if baseline in all_baselines_scores.keys():
+                    scores = all_baselines_scores[baseline]
+                    scores.append(score.mean(dim=(1,2)))
+                else: 
+                    scores = [score.mean(dim=(1,2))]
+                all_baselines_scores[baseline] = scores
+
+    for baseline in baselines:
+        scores = torch.cat(all_baselines_scores[baseline])
+        print(f"Avg alignment of {baseline} features: {scores.mean():.4f}")
+        all_baselines_scores[baseline] = scores
+
+    return all_baselines_scores
+        
+
 
