@@ -1,10 +1,18 @@
 # The FIX Benchmark: Extracting Features Interpretable to eXperts
-<!-- -------------------------------------------------------------------------------- -->
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/BrachioLab/exlib/blob/master/LICENSE)
+--------------------------------------------------------------------------------
+
+[<a href="https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf">Paper</a>] [<a href="https://brachiolab.github.io/fix/">Website</a>] 
+
+Official implementation for "The FIX Benchmark: Extracting Features Interpretable to eXperts".
+
+Authors: Helen Jin, Shreya Havaldar, Chaehyeon Kim, Anton Xue, Weiqiu You, Helen Qu, Marco Gatti, Daniel A Hashimoto, Bhuvnesh Jain, Amin Madani, Masao Sako, Lyle Ungar, Eric Wong.
 
 ## Overview
-FIX is a benchmark for extracting features that are interpretable to real-world experts, spanning diverse data modalities and applications, from doctors performing gall bladder surgery to cosmologists studying supernovae. 
+FIX is a benchmark for extracting features that are interpretable to real-world experts, spanning diverse data modalities and applications, from doctors performing gall bladder surgery to cosmologists studying supernovae. The FIX benchmark allows domains to measure alignment of extracted features with expert features either implicitly with a scoring function or explicitly with expert annotations.
+
+![Main figure](IF_extraction.png)
 
 The FIX package contains:
 
@@ -13,7 +21,7 @@ The FIX package contains:
 
 In addition, we include an example script that runs all baselines for every setting.
 
-For more information, please visit [our website](https://brachiolab.github.io/fix/) or read the main FIX [paper](https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf).
+<!-- For more information, please visit [our website](https://brachiolab.github.io/fix/) or read the main FIX [paper](https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf). -->
 <!-- For questions and feedback, please post on the [discussion board](https://github.com/BrachioLab/exlib/discussions). -->
 
 ## Getting Started
@@ -40,7 +48,7 @@ To run all baselines for every dataset setting, you can run the following script
 ```
 ./run_fix_baselines.sh
 ```
-The baseline feature extractors for differenet data modalities (e.g. text, time series, data) are located in [../src/exlib/features](https://github.com/BrachioLab/exlib/blob/master/src/features) folder.
+The baseline feature extractors for differenet data modalities (e.g. text, time series, data) are located in the [../src/exlib/features](https://github.com/BrachioLab/exlib/blob/master/src/features) folder.
 
 ## Datasets
 FIX currently includes 6 datasets, which we've briefly listed below. For full dataset descriptions, please see our [paper](https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf).
@@ -54,9 +62,11 @@ FIX currently includes 6 datasets, which we've briefly listed below. For full da
 | chestx                  | Image       | train, test      | Explicit         |
 | cholec                  | Image       | train, test      | Explicit         |
 
+
+
 ## Citation
 Please cite the paper as follows if you use the data or code from the FIX benchmark:
-```
+```bibtex
 @article{jin2024fix,
   title={The FIX Benchmark: Extracting Features Interpretable to eXperts},
   author={Helen Jin and Shreya Havaldar and Chaehyeon Kim and Anton Xue and Weiqiu You and Helen Qu and Marco Gatti and Daniel A Hashimoto and Bhuvnesh Jain and Amin Madani and Masao Sako and Lyle Ungar and Eric Wong},
@@ -68,7 +78,7 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
 
 ### Original Datasets Citations
 #### Mass Maps:
-```
+```bibtex
 @article{Kacprzak_2023,
    title={CosmoGridV1: a simulated 𝗐CDM theory prediction for map-level cosmological inference},
    volume={2023},
@@ -83,7 +93,7 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
    month=feb, pages={050} }
 ```
 #### Supernova:
-```
+```bibtex
 @misc{theplasticcteam2018photometric,
       title={The Photometric LSST Astronomical Time-series Classification Challenge (PLAsTiCC): Data set},
       author={The PLAsTiCC Team and Tarek Allam Jr. au2 and Anita Bahmanyar and Rahul Biswas and Mi Dai and Lluís Galbany and Renée Hložek and Emille E. O. Ishida and Saurabh W. Jha and David O. Jones and Richard Kessler and Michelle Lochner and Ashish A. Mahabal and Alex I. Malz and Kaisey S. Mandel and Juan Rafael Martínez-Galarza and Jason D. McEwen and Daniel Muthukrishna and Gautham Narayan and Hiranya Peiris and Christina M. Peters and Kara Ponder and Christian N. Setzer and The LSST Dark Energy Science Collaboration and The LSST Transients and Variable Stars Science Collaboration},
@@ -95,7 +105,7 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
 ```
 
 #### Multilingual Politeness:
-```
+```bibtex
 @inproceedings{havaldar-etal-2023-multilingual,
     title = "Multilingual Language Models are not Multicultural: A Case Study in Emotion",
     author = "Havaldar, Shreya  and
@@ -120,7 +130,7 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
 ```
 
 #### Emotion:
-```
+```bibtex
 @inproceedings{demszky-etal-2020-goemotions,
     title = "{G}o{E}motions: A Dataset of Fine-Grained Emotions",
     author = "Demszky, Dorottya  and
@@ -146,7 +156,7 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
 ```
 
 #### Chest X-Ray
-```
+```bibtex
 @article{majkowska2020chest,
   title={Chest radiograph interpretation with deep learning models: assessment with radiologist-adjudicated reference standards and population-adjusted evaluation},
   author={Majkowska, Anna and Mittal, Sid and Steiner, David F and Reicher, Joshua J and McKinney, Scott Mayer and Duggan, Gavin E and Eswaran, Krish and Cameron Chen, Po-Hsuan and Liu, Yun and Kalidindi, Sreenivasa Raju and others},
@@ -160,7 +170,7 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
 ```
 
 #### Laparoscopic Cholecystectomy Surgery:
-```
+```bibtex
 @article{stauder2016tum,
   title={The TUM LapChole dataset for the M2CAI 2016 workflow challenge},
   author={Stauder, Ralf and Ostler, Daniel and Kranzfelder, Michael and Koller, Sebastian and Feu{\ss}ner, Hubertus and Navab, Nassir},

@@ -9,7 +9,7 @@ import exlib
 from exlib.datasets.cholec import get_cholec_scores
 from exlib.datasets.chestx import get_chestx_scores
 from exlib.datasets.mass_maps import get_mass_maps_scores
-# from exlib.datasets.supernova import get_supernova_scores
+from exlib.datasets.supernova import get_supernova_scores
 # from exlib.datasets.multilingual_politeness import get_politeness_scores
 # from exlib.datasets.emotion import get_emotion_scores
 
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     # Make output directory if doesn't exist
     output_dir = Path(args.results_dir, args.setting)
     output_dir.mkdir(parents=True, exist_ok=True)
-    scores_filepath = str(Path(output_dir, f"all_fix_baselines_scores.pth"))
+    scores_filepath = str(Path(output_dir, f"all_baselines_scores.pt"))
     if os.path.isfile(scores_filepath):
         print(f'{scores_filepath} already exists')
     else:
