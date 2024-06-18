@@ -184,8 +184,8 @@ def get_chestx_scores(
             image = item["image"]
             with torch.no_grad():
                 structs_masks = item["structs"]
-                masks = F.one_hot(groups(image)).permute(0,3,1,2)
-                score = metric(masks, structs_masks) # (N,H,W)
+                pred_masks = groups(image)
+                score = metric(pred_masks, structs_masks) # (N,H,W)
 
                 if baseline in all_baselines_scores.keys():
                     scores = all_baselines_scores[baseline]

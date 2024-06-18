@@ -34,7 +34,7 @@ class CholecDataset(torch.utils.data.Dataset):
 
     def __init__(
         self,
-        split: str = "all_data",
+        split: str = "train",
         hf_data_repo: str = HF_DATA_REPO,
         image_size: tuple[int] = (360, 640)
     ):
@@ -152,8 +152,8 @@ def get_cholec_scores(
             image = item["image"]
             with torch.no_grad():
                 organs_masks = F.one_hot(item["organs"]).permute(0,3,1,2)
-                masks = F.one_hot(groups(image)).permute(0,3,1,2)
-                score = metric(masks, organs_masks) # (N,H,W)
+                pred_masks = groups(image)
+                score = metric(pred_masks, organs_masks) # (N,H,W)
 
                 if baseline in all_baselines_scores.keys():
                     scores = all_baselines_scores[baseline]
