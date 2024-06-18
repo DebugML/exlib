@@ -14,8 +14,11 @@ from tqdm.auto import tqdm
 import sys
 sys.path.append("../src")
 import exlib
-from exlib.features.vision.mass_maps import MassMapsWatershed, MassMapsQuickshift, MassMapsPatch
-
+# Baselines
+from exlib.features.vision.mass_maps import MassMapsOracle, MassMapsOne
+from exlib.features.vision.watershed import WatershedGroups
+from exlib.features.vision.quickshift import QuickshiftGroups
+from exlib.features.vision.patch import PatchGroups
 
 
 DATASET_REPO = "BrachioLab/massmaps-cosmogrid-100k"
@@ -132,14 +135,6 @@ class MassMapsAlignment(nn.Module):
         self.void_threshold = void_threshold
         self.cluster_threshold = cluster_threshold
         self.eps = eps
-        # self.daf_types = ['other', 'void', 'cluster']
-        # self.daf_types2id = {
-        #     'other': 0,
-        #     'void': 1,
-        #     'cluster': 2
-        # }
-        # self.void_scale = void_scale
-        # self.cluster_scale = cluster_scale
 
     def forward(self, groups, x, reduce='sum'):
         """
@@ -189,39 +184,7 @@ class MassMapsAlignment(nn.Module):
                 'p_cluster_': p_cluster_,
                 'p_other_': p_other_
             }
-            
-            # purity, p_void_vconly, p_cluster_vconly, p_void_, p_cluster_, p_other_
-        
-    # def forward(self, zp, x, reduce='sum'):
-    #     """
-    #     zp: (N, M, H, W) 0 or 1, or bool
-    #     x: image (N, 1, H, W)
-    #     return 
-    #     """
-    #     assert reduce in ['sum', 'none']
-    #     # metric test
-    #     zp = zp.bool().float() # if float then turned into bool
-    #     masked_imgs = zp * x # (N, M, H, W)
-    #     sigma = x.flatten(2).std(dim=-1) # (N, M)
-    #     mask_masses = (masked_imgs * zp).flatten(2).sum(-1)
-    #     img_masses = zp.flatten(2).sum(-1)
-    #     mask_intensities = mask_masses / img_masses
-    #     mask_sizes = zp.flatten(2).sum(-1) # (N, M)
-    #     num_masks = mask_sizes.bool().sum(-1) # (N, M)
-        
-    #     align_void = (masked_imgs < self.void_threshold*sigma[:,:,None,None]).sum([-1,-2]) \
-    #                     / mask_sizes * (- mask_masses)
-    #     align_void[mask_sizes.bool().logical_not()] = 0
-    #     align_void[align_void < 0] = 0
-    #     align_cluster = (masked_imgs > self.cluster_threshold*sigma[:,:,None,None]).sum([-1,-2]) \
-    #                     / mask_sizes
-    #     align_cluster[mask_sizes.bool().logical_not()] = 0
-    #     align_cluster[align_cluster < 0] = 0
-        
-    #     if reduce == 'sum':
-    #         return align_void * self.void_scale + align_cluster * self.cluster_scale
-    #     else: # none
-    #         return align_void, align_cluster
+
 
 def show_example(groups, X, img_idx=0, mode='contour'):
     assert mode in ['contour', 'dim']
@@ -287,7 +250,14 @@ def map_plotter(image, mask, ax=plt, type='dim'):
 
 
 
-def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed']): # currently we just assume we are running everything, need to update though to be able to specify a baseline to run
+# def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed']): # currently we just assume we are running everything, need to update though to be able to specify a baseline to run
+def get_mass_maps_scores(baselines = [
+    WatershedGroups(min_dist=10, compactness=0),
+    QuickshiftGroups(kernel_size=5, max_dist=10),
+    PatchGroups(num_patches=(8, 8), mode='count'),
+    MassMapsOracle(),
+    MassMapsOne()
+], subset=False):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     
     # Load model
@@ -304,34 +274,18 @@ def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed']): # cu
     
     massmaps_align = MassMapsAlignment()
     
-    # Eval
-    watershed_baseline = MassMapsWatershed().to(device)
-    watershed_norm_05_baseline = MassMapsWatershed(compactness=0.5, normalize=True).to(device)
-    watershed_norm_1_baseline = MassMapsWatershed(compactness=1, normalize=True).to(device)
-    quickshift_baseline = MassMapsQuickshift().to(device)
-    patch_baseline = MassMapsPatch().to(device)
-    
-    baselines = {
-        'watershed': watershed_baseline,
-        'watershed_norm_05': watershed_norm_05_baseline,
-        'watershed_norm_1': watershed_norm_1_baseline,
-        'quickshift': quickshift_baseline,
-        'patch': patch_baseline
-    }
-    
-    batch_size = 5
+    batch_size = 16
     test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size)
 
-    
     model.eval()
     mse_loss_all = 0
     total = 0
-    alignment_scores_all = defaultdict(list)
+    alignment_scores_all = [[] for _ in range(len(baselines))]
     
     with torch.no_grad():
         for bi, batch in tqdm(enumerate(test_dataloader), total=len(test_dataloader)):
-            # if bi % 100 != 0:
-            #     continue
+            if subset and bi % 100 != 0:
+                continue
             X = batch['input'].to(device)
             y = batch['label'].to(device)
             out = model(X)
@@ -341,12 +295,12 @@ def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed']): # cu
             total += X.shape[0]
     
             # baseline
-            for name, baseline in baselines.items():
+            for base_i, baseline in enumerate(baselines):
                 groups = baseline(X)
     
                 # alignment
                 alignment_scores = massmaps_align(groups, X)
-                alignment_scores_all[name].extend(alignment_scores.flatten(1).cpu().numpy().tolist())
+                alignment_scores_all[base_i].extend(alignment_scores.flatten(1).cpu().numpy().tolist())
             
             
                 
