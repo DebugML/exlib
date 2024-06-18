@@ -53,7 +53,7 @@ def calculate_means(x, masks):
 
 class Metric(nn.Module): 
     def __init__(self, sigma = 1, nchunk = 7, groups=torch.Tensor([]), labels=None, past_values=None, past_time_features=None, past_observed_mask=None): 
-        super(SupernovaFIXScores, self).__init__()
+        super(Metric, self).__init__()
         self.sigma = sigma
         self.nchunk = nchunk
         self.groups = groups
