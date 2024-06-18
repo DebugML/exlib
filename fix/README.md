@@ -54,12 +54,12 @@ FIX currently includes 6 datasets, which we've briefly listed below. All dataset
 
 | Dataset                 | Modality    | Labeled splits   | Expert Features  | Links             |
 | ----------------------- | ----------- | ---------------- | ---------------- | ----------------- | 
-| massmaps                | Image       | train, val, test | Implicit         | [dataset](https://huggingface.co/datasets/BrachioLab/massmaps-cosmogrid-100k) [model](https://huggingface.co/BrachioLab/massmaps-conv) | 
-| supernova               | Time Series | train, val, test | Implicit         | [dataset](https://huggingface.co/datasets/BrachioLab/supernova-timeseries) [model](https://huggingface.co/BrachioLab/supernova-classification) |
-| multilingual_politeness | Text        | train, val, test | Implicit         | [dataset](https://huggingface.co/datasets/BrachioLab/multilingual_politeness) [model](https://huggingface.co/BrachioLab/xlm-roberta-politeness) |
-| emotion                 | Text        | train, val, test | Implicit         | [dataset](https://huggingface.co/datasets/BrachioLab/emotion) [model](https://huggingface.co/BrachioLab/roberta-base-go_emotions) |
-| chestx                  | Image       | train, test      | Explicit         | [dataset](https://huggingface.co/datasets/BrachioLab/chestx) [model](https://huggingface.co/BrachioLab/chestx_pathols) |
-| cholec                  | Image       | train, test      | Explicit         | [dataset](https://huggingface.co/datasets/BrachioLab/cholecystectomy) [model](https://huggingface.co/BrachioLab/cholecystectomy_organs) | 
+| massmaps                | Image       | train, val, test | Implicit         | [<a href="https://huggingface.co/datasets/BrachioLab/massmaps-cosmogrid-100k">dataset</a>] [<a href="https://huggingface.co/BrachioLab/massmaps-conv">model</a>] | 
+| supernova               | Time Series | train, val, test | Implicit         | [<a href="https://huggingface.co/datasets/BrachioLab/supernova-timeseries">dataset</a>] [<a href="https://huggingface.co/BrachioLab/supernova-classification">model</a>] |
+| multilingual_politeness | Text        | train, val, test | Implicit         | [<a href="https://huggingface.co/datasets/BrachioLab/multilingual_politeness">dataset</a>] [<a href="https://huggingface.co/BrachioLab/xlm-roberta-politeness">model</a>] |
+| emotion                 | Text        | train, val, test | Implicit         | [<a href="https://huggingface.co/datasets/BrachioLab/emotion">dataset</a>] [<a href="https://huggingface.co/BrachioLab/roberta-base-go_emotions">model</a>] |
+| chestx                  | Image       | train, test      | Explicit         | [<a href="https://huggingface.co/datasets/BrachioLab/chestx">dataset</a>] [<a href="https://huggingface.co/BrachioLab/chestx_pathols">model</a>] |
+| cholec                  | Image       | train, test      | Explicit         | [<a href="https://huggingface.co/datasets/BrachioLab/cholecystectomy">dataset</a>] [<a href="https://huggingface.co/BrachioLab/cholecystectomy_organs">model</a>] | 
 
 ## Citation
 Please cite the FIX paper as follows if you use the data or code from the FIX benchmark:
