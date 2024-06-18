@@ -50,16 +50,16 @@ To run all baselines for every dataset setting, you can run the following script
 The baseline feature extractors for differenet data modalities (e.g. text, time series, data) are located in the [../src/exlib/features](https://github.com/BrachioLab/exlib/blob/master/src/features) folder.
 
 ## Datasets
-FIX currently includes 6 datasets, which we've briefly listed below. For full dataset descriptions, please see our [paper](https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf).
+FIX currently includes 6 datasets, which we've briefly listed below. All datasets and models are hosted on [Huggingface](https://huggingface.co/BrachioLab). For full dataset descriptions, please see our [paper](https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf).
 
-| Dataset                 | Modality    | Labeled splits   | Expert Features  |
-| ----------------------- | ----------- | ---------------- | ---------------- |
-| massmaps                | Image       | train, val, test | Implicit         |
-| supernova               | Time Series | train, val, test | Implicit         |
-| multilingual_politeness | Text        | train, val, test | Implicit         |
-| emotion                 | Text        | train, val, test | Implicit         |
-| chestx                  | Image       | train, test      | Explicit         |
-| cholec                  | Image       | train, test      | Explicit         |
+| Dataset                 | Modality    | Labeled splits   | Expert Features  | Link     |
+| ----------------------- | ----------- | ---------------- | ---------------- | -------- |
+| massmaps                | Image       | train, val, test | Implicit         | [link](https://huggingface.co/datasets/BrachioLab/massmaps-cosmogrid-100k) |
+| supernova               | Time Series | train, val, test | Implicit         | [link](https://huggingface.co/datasets/BrachioLab/supernova-timeseries)    |
+| multilingual_politeness | Text        | train, val, test | Implicit         | [link](https://huggingface.co/datasets/BrachioLab/multilingual_politeness) |
+| emotion                 | Text        | train, val, test | Implicit         | [link](https://huggingface.co/datasets/BrachioLab/emotion)                 |
+| chestx                  | Image       | train, test      | Explicit         | [link](https://huggingface.co/datasets/BrachioLab/chestx)                  |
+| cholec                  | Image       | train, test      | Explicit         | [link](https://huggingface.co/datasets/BrachioLab/cholecystectomy)         |
 
 
 
