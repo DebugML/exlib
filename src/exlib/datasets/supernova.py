@@ -12,7 +12,7 @@ from typing import Optional, Union, List
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm.auto import tqdm
-
+from exlib.features.time_series.chunk import BaselineGroups
 from datasets import load_dataset
 import torch
 import yaml
@@ -51,18 +51,18 @@ def calculate_means(x, masks):
     x_totals = torch.clamp(x_totals, min=1e-5)
     return x_sums / x_totals
 
-class Metric(nn.Module): 
+class SupernovaFIXScores(nn.Module): 
     def __init__(self, sigma = 1, nchunk = 7, groups=torch.Tensor([]), labels=None, past_values=None, past_time_features=None, past_observed_mask=None): 
-        super(Metric, self).__init__()
+        super(SupernovaFIXScores, self).__init__()
         self.sigma = sigma
         self.nchunk = nchunk
         self.groups = groups
 
     def forward(self, labels=None, past_values=None, past_time_features=None, past_observed_mask=None):
+        sigma, nchunk, groups = self.sigma, self.nchunk, self.groups
         t, wl, flux, err = past_time_features[:,:,0].to(device), past_time_features[:,:,1].to(device), past_values[:,:,0].to(device), past_values[:,:,1].to(device)
         unique_wl = torch.Tensor([3670.69, 4826.85, 6223.24, 7545.98, 8590.9, 9710.28]).to(device)
-        sigma, nchunk, groups = self.sigma, self.nchunk, self.groups
-
+        
         t_means = calculate_means(t, groups)
         flux_means = calculate_means(flux, groups)
         t_delta = t[:,None,None,:] - t_means.unsqueeze(3)
@@ -107,6 +107,60 @@ class Metric(nn.Module):
         scores_per_feature = (alignment_score.unsqueeze(2)*groups)
         
         return (scores_per_feature.sum(1)/torch.clamp(groups.sum(1), min=1e-5)).mean(dim=1)
+
+def get_supernova_scores(
+    baselines = ['5', '10', '15'],
+    dataset = SupernovaDataset(data_dir = "BrachioLab/supernova-timeseries", split="test"),
+    SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = torch.Tensor([])),
+    batch_size = 5,
+):
+    test_dataloader = create_test_dataloader_raw(
+    dataset=dataset,
+    batch_size=5,
+    compute_loss=True
+)
+    fix_score_all_a = 0
+    fix_score_all_b = 0
+    fix_score_all_c = 0
+    elements_all_a = 0
+    elements_all_b = 0
+    elements_all_c = 0
+    all_baselines_scores = {}
+    with torch.no_grad():
+        for bi, batch in tqdm(enumerate(test_dataloader), total=len(test_dataloader)):
+            for baseline in baselines:
+                if baseline == '5':
+                    BaselineGroup = BaselineGroups(ngroups=5, window_size=100)
+                    pred_groups = BaselineGroup(**batch)
+                    SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
+                    fix_score = SupernovaFIXScore(**batch)
+                    fix_score_all_a += fix_score.sum().item()
+                    elements_all_a += fix_score.numel()
+                elif baseline == '10':
+                    BaselineGroup = BaselineGroups(ngroups=10, window_size=100)
+                    pred_groups = BaselineGroup(**batch)
+                    SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
+                    fix_score = SupernovaFIXScore(**batch)
+                    fix_score_all_b += fix_score.sum().item()
+                    elements_all_b += fix_score.numel()
+                elif baseline == '15':
+                    BaselineGroup = BaselineGroups(ngroups=15, window_size=100)
+                    pred_groups = BaselineGroup(**batch)
+                    SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
+                    fix_score = SupernovaFIXScore(**batch)
+                    fix_score_all_c += fix_score.sum().item()
+                    elements_all_c += fix_score.numel()
+    for baseline in baselines:
+        if baseline == '5':
+            scores = fix_score_all_a / elements_all_a
+        elif baseline == '10':
+            scores = fix_score_all_b / elements_all_b
+        elif baseline == '15':
+            scores = fix_score_all_c / elements_all_c
+        print(f"Avg alignment of {baseline} features: {scores:.4f}")
+        all_baselines_scores[baseline] = scores
+
+    return all_baselines_scores
 
 def plot_data_by_wavelength(times, fluxes, errors, wavelengths, title, bi, j):
     unique_wavelengths = sorted(set(wavelengths))
