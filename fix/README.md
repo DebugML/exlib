@@ -10,7 +10,7 @@ Official implementation for "The FIX Benchmark: Extracting Features Interpretabl
 Authors: Helen Jin, Shreya Havaldar, Chaehyeon Kim, Anton Xue, Weiqiu You, Helen Qu, Marco Gatti, Daniel A Hashimoto, Bhuvnesh Jain, Amin Madani, Masao Sako, Lyle Ungar, Eric Wong.
 
 ## Overview
-FIX is a benchmark for extracting features that are interpretable to real-world experts, spanning diverse data modalities and applications, from doctors performing gall bladder surgery to cosmologists studying supernovae. The FIX benchmark allows domains to measure alignment of extracted features with expert features either implicitly with a scoring function or explicitly with expert annotations.
+FIX is a benchmark for **extracting features that are interpretable to real-world experts**, spanning diverse data modalities and applications, from doctors performing gall bladder surgery to cosmologists studying supernovae. The FIX benchmark allows domains to measure alignment of extracted features with expert features either *implicitly* with a scoring function or *explicitly* with expert annotations.
 
 ![Main figure](IF_extraction.png)
 
@@ -36,7 +36,6 @@ If you have exlib already installed, please check that you have the latest versi
 python -c "import exlib; print(exlib.__version__)"
 # This should print "1.0.0". If it does not, update the package by running:
 pip install -U exlib
-
 ```
 
 ### FIX Notebooks
@@ -177,7 +176,8 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
   journal={arXiv preprint arXiv:1610.09278},
   year={2016}
 }
-
+```
+```bibtex
 @article{twinanda2016endonet,
   title={Endonet: a deep architecture for recognition tasks on laparoscopic videos},
   author={Twinanda, Andru P and Shehata, Sherif and Mutter, Didier and Marescaux, Jacques and De Mathelin, Michel and Padoy, Nicolas},
