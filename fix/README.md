@@ -154,7 +154,7 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
 }
 ```
 
-#### Chest X-Ray
+#### Chest X-Ray:
 ```bibtex
 @article{majkowska2020chest,
   title={Chest radiograph interpretation with deep learning models: assessment with radiologist-adjudicated reference standards and population-adjusted evaluation},
