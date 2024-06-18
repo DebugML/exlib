@@ -1,5 +1,6 @@
 # The FIX Benchmark: Extracting Features Interpretable to eXperts
 
+[![PyPI](https://img.shields.io/pypi/v/exlib)](https://pypi.org/project/exlib/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/BrachioLab/exlib/blob/master/LICENSE)
 --------------------------------------------------------------------------------
 
