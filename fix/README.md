@@ -64,7 +64,7 @@ FIX currently includes 6 datasets, which we've briefly listed below. For full da
 
 
 ## Citation
-Please cite the paper as follows if you use the data or code from the FIX benchmark:
+Please cite the FIX paper as follows if you use the data or code from the FIX benchmark:
 ```bibtex
 @article{jin2024fix,
   title={The FIX Benchmark: Extracting Features Interpretable to eXperts},
@@ -76,6 +76,8 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
 ```
 
 ### Original Datasets Citations
+We also include the original datasets' citations for reference.
+
 #### Mass Maps:
 ```bibtex
 @article{Kacprzak_2023,
@@ -193,6 +195,6 @@ Please cite the paper as follows if you use the data or code from the FIX benchm
 ## Contact
 Please reach out to us if you have any questions or suggestions. You can submit an issue or pull request, or send an email to helenjin@seas.upenn.edu.
 
-Thank you for your interest in the FIX benchamrk.
+Thank you for your interest in the FIX benchmark.
 
 
