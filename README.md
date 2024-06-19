@@ -1,4 +1,7 @@
 # exlib
+[![PyPI](https://img.shields.io/pypi/v/exlib)](https://pypi.org/project/exlib/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/BrachioLab/exlib/blob/master/LICENSE)
+
 
 exlib is a comprehensive package showcasing our lab's work on explanation methods, featuring user-friendly modules for easy application of various techniques. 
 
