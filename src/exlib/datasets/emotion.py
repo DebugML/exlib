@@ -8,6 +8,11 @@ from datasets import load_dataset
 import torch.nn as nn
 import sentence_transformers
 
+import sys
+sys.path.append("../src")
+import exlib
+# Baselines
+from exlib.features.text.text_chunk import text_chunk
 
 DATASET_REPO = "go_emotions"
 MODEL_REPO = "shreyahavaldar/roberta-base-go_emotions"
@@ -152,24 +157,7 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence']):
                 processed_word_lists.append([word for word in word_list if word != ''])
             
             for word_list in processed_word_lists:
-                groups = []
-                if baseline == 'word':
-                    for word in word_list:
-                        groups.append([word])
-                elif baseline == 'phrase':
-                    #each group is 3 consecutive words
-                    for i in range(0, len(word_list), 3):
-                        groups.append(word_list[i:i+3])
-                elif baseline == 'sentence':
-                    #reconstruct sentences from word list
-                    sentence = ""
-                    for word in word_list:
-                        sentence += word + " "
-                        if word[-1] == "." or word[-1] == "!" or word[-1] == "?":
-                            groups.append(sentence.split())
-                            sentence = ""
-                    if(len(sentence) > 0):
-                        groups.append(sentence.split())
+                groups = text_chunk(word_list, baseline)
                 # print(groups)
                 alignments = torch.tensor(metric.calculate_group_alignment(groups))
                 score = alignments.mean()
