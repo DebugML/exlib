@@ -1,6 +1,7 @@
 import torch
 from transformers import AutoModel, AutoTokenizer
 import numpy as np
+import pandas as pd
 import tqdm
 from tqdm import tqdm
 from torch.utils.data import DataLoader
@@ -13,6 +14,10 @@ sys.path.append("../src")
 import exlib
 # Baselines
 from exlib.features.text.text_chunk import text_chunk
+from exlib.utils.emotion_helper import project_points_onto_axes, load_emotions
+
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 DATASET_REPO = "go_emotions"
 MODEL_REPO = "shreyahavaldar/roberta-base-go_emotions"
