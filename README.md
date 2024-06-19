@@ -1,6 +1,6 @@
 # exlib
 
-Exlib is a comprehensive package showcasing our lab's work on explanation methods, featuring user-friendly modules for easy application of various techniques. 
+exlib is a comprehensive package showcasing our lab's work on explanation methods, featuring user-friendly modules for easy application of various techniques. 
 
 ## Installation
 To create a dev environment: 
