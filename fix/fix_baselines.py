@@ -56,6 +56,6 @@ if __name__ == "__main__":
         all_baselines_scores = get_scores(baselines=baselines_list)
         # dic, where key is name of baseline (e.g. patch) and value is the baseline scores
 
-        print(all_baselines_scores)
+        # print(all_baselines_scores)
         torch.save(all_baselines_scores, scores_filepath)
 
