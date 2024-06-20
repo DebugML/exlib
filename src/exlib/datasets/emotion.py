@@ -17,20 +17,22 @@ from exlib.features.text.text_chunk import text_chunk
 from exlib.utils.emotion_helper import project_points_onto_axes, load_emotions
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-DATASET_REPO = "go_emotions"
-MODEL_REPO = "shreyahavaldar/roberta-base-go_emotions"
+MODEL_REPO = "BrachioLab/roberta-base-go_emotions"
+DATASET_REPO = "BrachioLab/emotion"
 TOKENIZER_REPO = "roberta-base"
+
 
 def load_data():
     hf_dataset = load_dataset(DATASET_REPO)
     return hf_dataset
 
+
 def load_model():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = AutoModel.from_pretrained(MODEL_REPO)
     model.to(device)
     return model
+
 
 #go emotions dataset
 class EmotionDataset(torch.utils.data.Dataset):
@@ -83,13 +85,23 @@ class Metric(nn.Module):
         self.y2 = points[2]
 
     def define_circumplex(self):
-        emotions = pd.read_csv("../src/exlib/utils/russell_emotions.csv")
-        axis_labels = ["NV", "PV", "HA", "LA"]
+        # Circumplex labels to emotions
+        label_to_emotions = {
+            # Positive valence
+            "PV": ["Happy", "Pleased", "Delighted", "Excited", "Satisfied"],
+            # Negative valence
+            "NV": ["Miserable", "Frustrated", "Sad", "Depressed", "Afraid"],
+            # High arousal
+            "HA": ["Astonished", "Alarmed", "Angry", "Afraid", "Excited"],
+            # Low arousal
+            "LA": ["Tired", "Sleepy", "Calm", "Satisfied", "Depressed"],
+        }
+
         axis_points = []
-        for label in axis_labels:
-            emotion_words = emotions[emotions["label"] == label]["emotion"].values
-            emotion_embeddings = self.model.encode(emotion_words)
+        for k, v in label_to_emotions.items():
+            emotion_embeddings = self.model.encode(np.array(v))
             axis_points.append(np.mean(emotion_embeddings, axis=0))
+
         return axis_points
     
     def distance_from_circumplex(self, embeddings):
@@ -140,7 +152,7 @@ class Metric(nn.Module):
 
 def get_emotion_scores(baselines = ['word', 'phrase', 'sentence']):
     dataset = EmotionDataset("test")
-    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = EmotionClassifier()
     model.to(device)
     model.eval()

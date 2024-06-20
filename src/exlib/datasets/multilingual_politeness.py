@@ -14,21 +14,25 @@ sys.path.append("../src")
 import exlib
 # Baselines
 from exlib.features.text.text_chunk import text_chunk
+from exlib.utils.politeness_helper import load_lexica
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-DATASET_REPO = "shreyahavaldar/multilingual_politeness"
-MODEL_REPO = "shreyahavaldar/xlm-roberta-politeness"
+DATASET_REPO = "BrachioLab/multilingual_politeness"
+MODEL_REPO = "BrachioLab/xlm-roberta-politeness"
 TOKENIZER_REPO = "xlm-roberta-base"
+
 
 def load_data():
     hf_dataset = load_dataset(DATASET_REPO)
     return hf_dataset
 
+
 def load_model():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = XLMRobertaForSequenceClassification.from_pretrained(MODEL_REPO)
     model.to(device)
     return model
+
 
 class PolitenessDataset(torch.utils.data.Dataset):
     def __init__(self, split, language="english"):
@@ -80,8 +84,7 @@ class Metric(nn.Module):
         languages = ["english", "spanish", "chinese", "japanese"]
         lexica = {}
         for l in languages:
-            filepath = f"../src/exlib/utils/politeness_lexica/{l}_politelex.csv"
-            lexica[l] = pd.read_csv(filepath)
+            lexica[l] = load_lexica(l)
 
         # create centroids
         all_centroids = {}        
@@ -100,6 +103,8 @@ class Metric(nn.Module):
 
     # input: list of words
     def calculate_single_group_alignment(self, group:list, language:str="english"):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         #find max avg cos sim between word embeddings and centroids
         category_similarities = {}
         centroids = self.centroids[language]
@@ -156,6 +161,7 @@ class Metric(nn.Module):
 
 def get_politeness_scores(baselines = ['word', 'phrase', 'sentence']):
     dataset = PolitenessDataset("test")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = PolitenessClassifier()
     model.to(device)
     model.eval()
