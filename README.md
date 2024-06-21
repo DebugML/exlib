@@ -26,6 +26,6 @@ grad-cam@git+https://github.com/brachiolab/pytorch-grad-cam
 We list below some relevant projects that use exlib heavily.
 
 ### The FIX Benchmark: Extracting Features Interpretable to eXperts
-* You can find the FIX benchmark Github repo [here](https://github.com/BrachioLab/exlib/tree/dev/fix). 
+* You can find the FIX benchmark repo [here](https://github.com/BrachioLab/exlib/tree/dev/fix). 
 * [<a href="https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf">Paper</a>] [<a href="https://brachiolab.github.io/fix/">Website</a>] 
 
