@@ -20,7 +20,7 @@ FIX is a benchmark for **extracting features that are interpretable to real-worl
 The FIX package contains:
 
  * Data loaders that automatically handle data downloading, processing, and splitting, and
- * Dataset evaluators that standardize model evaluation for each dataset.
+ * Evaluation metrics for each dataset.
 
 In addition, we include an example script that runs all baselines for every setting.
 
@@ -50,7 +50,7 @@ To run all baselines for every dataset setting, you can run the following script
 ```
 ./run_fix_baselines.sh
 ```
-The baseline feature extractors for differenet data modalities (e.g. text, time series, data) are located in the [../src/exlib/features](https://github.com/BrachioLab/exlib/blob/master/src/features) folder.
+The baseline feature extractors for different data modalities (e.g. text, time series, data) are located in the [../src/exlib/features](https://github.com/BrachioLab/exlib/blob/master/src/features) folder.
 
 ## Datasets
 FIX currently includes 6 datasets, which we've briefly listed below. All datasets and models are hosted on Huggingface (see links in table). For full dataset descriptions, please see our [paper](https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf).
