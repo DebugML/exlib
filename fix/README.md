@@ -12,7 +12,10 @@ Authors: Helen Jin, Shreya Havaldar, Chaehyeon Kim, Anton Xue, Weiqiu You, Helen
 ## Overview
 FIX is a benchmark for **extracting features that are interpretable to real-world experts**, spanning diverse data modalities and applications, from doctors performing gall bladder surgery to cosmologists studying supernovae. The FIX benchmark allows domains to measure alignment of extracted features with expert features either *implicitly* with a scoring function or *explicitly* with expert annotations.
 
-![Main figure](IF_extraction.png)
+<p align="center">
+  <img src="IF_extraction.png" width="800"/>
+</p>
+
 
 The FIX package contains:
 
