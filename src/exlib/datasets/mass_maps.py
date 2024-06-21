@@ -315,9 +315,7 @@ def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed', 'oracl
                 else: 
                     scores = scores_batch
                 all_baselines_scores[baseline_name] = scores
-                
-                # alignment_scores_all[base_i].extend(alignment_scores.flatten(1).cpu().numpy().tolist())
-                
+                                
     loss_avg = mse_loss_all / total
     print(f'Omega_m loss {loss_avg[0].item():.4f}, sigma_8 loss {loss_avg[1].item():.4f}, avg loss {loss_avg.mean().item():.4f}')
 

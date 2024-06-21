@@ -171,4 +171,3 @@ def get_cholec_scores(
     return all_baselines_scores
     
     
-
