@@ -52,7 +52,7 @@ To run all baselines for every dataset setting, you can run the following script
 ```
 ./run_fix_baselines.sh
 ```
-The baseline feature extractors for different data modalities (e.g. text, time series, data) are located in the [../src/exlib/features](https://github.com/BrachioLab/exlib/blob/master/src/features) folder.
+The baseline feature extractors for different data modalities (e.g. text, time series, data) are located in the [../src/exlib/features](https://github.com/BrachioLab/exlib/tree/main/src/exlib/features) folder.
 
 ## Datasets
 FIX currently includes 6 datasets, which we've briefly listed below. All datasets and models are hosted on Huggingface (see links in table). For full dataset descriptions, please see our [paper](https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf).
