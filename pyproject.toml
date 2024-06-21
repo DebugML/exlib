@@ -20,7 +20,8 @@ dependencies = [
   'scikit-image >= 0.22',
   'datasets >= 2.19', 
   'transformers >= 4.38', 
-  'sentence_transformers >= 3.0.0'
+  'sentence_transformers >= 3.0.0',
+  'sentencepiece >= 0.2.0'
 ]
 description = "Toolkit for explainability by BrachioLab"
 readme = "README.md"
