@@ -17,8 +17,8 @@ from exlib.datasets.emotion import get_emotion_scores
 all_settings_baselines = {
     'cholec': ['patch', 'quickshift', 'watershed'],
     'chestx': ['patch', 'quickshift', 'watershed'],
-    'massmaps': ['patch', 'quickshift', 'watershed'],
-    'supernova': ['chunk'], # needs to be updated to include chunk size
+    'mass_maps': ['patch', 'quickshift', 'watershed', 'oracle', 'one'],
+    'supernova': ['chunk 5', 'chunk 10', 'chunk 15'], # chunk size
     'multilingual_politeness': ['word', 'phrase', 'sentence'],
     'emotion': ['word', 'phrase', 'sentence']
 }
@@ -41,7 +41,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print('SETTING:', args.setting)
     
-    # Make output directory if doesn't exist
+    # Make output directory if does not exist
     output_dir = Path(args.results_dir, args.setting)
     output_dir.mkdir(parents=True, exist_ok=True)
     scores_filepath = str(Path(output_dir, f"all_baselines_scores.pt"))
@@ -57,5 +57,12 @@ if __name__ == "__main__":
         # dic, where key is name of baseline (e.g. patch) and value is the baseline scores
 
         # print(all_baselines_scores)
+        for name in all_baselines_scores:
+            metric = torch.tensor(all_baselines_scores[name])
+            mean_metric = metric.mean()
+            print(f'BASELINE {name} mean score: {mean_metric}')
+            
         torch.save(all_baselines_scores, scores_filepath)
+
+        
 

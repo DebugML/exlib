@@ -142,7 +142,7 @@ def get_cholec_scores(
     all_baselines_scores = {}
     for item in tqdm(dataloader):
         for baseline in baselines:
-            if baseline == 'patch': # patching
+            if baseline == 'patch': # patch
                 groups = PatchGroups()
             elif baseline == 'quickshift': # quickshift
                 groups = QuickshiftGroups()
@@ -165,7 +165,7 @@ def get_cholec_scores(
     
     for baseline in baselines:
         scores = torch.cat(all_baselines_scores[baseline])
-        print(f"Avg alignment of {baseline} features: {scores.mean():.4f}")
+        # print(f"Avg alignment of {baseline} features: {scores.mean():.4f}")
         all_baselines_scores[baseline] = scores
 
     return all_baselines_scores

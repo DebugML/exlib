@@ -96,12 +96,10 @@ class Metric(nn.Module):
             # Low arousal
             "LA": ["Tired", "Sleepy", "Calm", "Satisfied", "Depressed"],
         }
-
         axis_points = []
         for k, v in label_to_emotions.items():
             emotion_embeddings = self.model.encode(np.array(v))
             axis_points.append(np.mean(emotion_embeddings, axis=0))
-
         return axis_points
     
     def distance_from_circumplex(self, embeddings):
@@ -161,7 +159,7 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence']):
     torch.manual_seed(1234)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
 
-    alignment_scores_all = {}
+    all_baselines_scores = {}
     for baseline in baselines:
         print(f"---- {baseline} Level Groups ----")
         
@@ -183,9 +181,9 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence']):
             # if i > 1:
             #     break
                 
-        print(baseline_scores)    
+        # print(baseline_scores)    
         baseline_scores = torch.stack(baseline_scores)
-        alignment_scores_all[baseline] = baseline_scores
+        all_baselines_scores[baseline] = baseline_scores
     
-    print(alignment_scores_all)
-    return alignment_scores_all
+    # print(all_baselines_scores)
+    return all_baselines_scores

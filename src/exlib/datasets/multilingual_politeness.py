@@ -108,21 +108,7 @@ class Metric(nn.Module):
         #find max avg cos sim between word embeddings and centroids
         category_similarities = {}
         centroids = self.centroids[language]
-        # if len(group) > 1:
-
-        #     import pdb; pdb.set_trace()
-        #     # prev
-        #     for category, centroid_emb in centroids.items():
-        #         #calculate cosine similarity
-        #         cos_sim = []
-        #         for word in group:
-        #             word_emb = self.model.encode(word)
-        #             cos_sim.append(np.dot(word_emb, centroid_emb) / (np.linalg.norm(word_emb) * np.linalg.norm(centroid_emb)))
-        #         avg_cos_sim = np.mean(cos_sim)
-        #         category_similarities[category] = avg_cos_sim
-
-        #     group_alignment1 = max(category_similarities.values())
-        # new
+    
         word_embs = []
         for word in group:
             word_emb = self.model.encode(word)
@@ -169,43 +155,32 @@ def get_politeness_scores(baselines = ['word', 'phrase', 'sentence']):
     metric = Metric()
     torch.manual_seed(1234)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
-    import time
-    alignment_scores_all = {}
+    all_baselines_scores = {}
+    
     for baseline in baselines:
         print(f"---- {baseline} Level Groups ----")
-        
         baseline_scores = []
-        for bi, batch in enumerate(tqdm(dataloader)):
+        for i, batch in enumerate(tqdm(dataloader)):
             word_lists = batch['word_list']
             word_lists = list(map(list, zip(*word_lists)))
             processed_word_lists = []
-            start = time.time()
             for word_list in word_lists:
                 processed_word_lists.append([word for word in word_list if word != ''])
-            # print('a', time.time() - start)
-            # start = time.time()
             for word_list in processed_word_lists:
                 groups = []
                 groups = text_chunk(word_list, baseline)
-                # print('baseline', baseline, '-------')        
-                # print(groups)
-                # print('aa', time.time() - start)
-                start = time.time()
                 alignments = torch.tensor(metric.calculate_group_alignment(groups))
-                # print('aa compute align', time.time() - start)
-                start = time.time()
                 score = alignments.mean()
                 baseline_scores.append(score)
-            # if bi > 2:
+            # if i > 2:
             #     break
-            # if i % 10 == 0: #> 2:
-            #     continue #break
+    
         # print(baseline_scores)    
         baseline_scores = torch.stack(baseline_scores)
-        alignment_scores_all[baseline] = baseline_scores
+        all_baselines_scores[baseline] = baseline_scores
     
     # print(alignment_scores_all)
-    return alignment_scores_all
+    return all_baselines_scores
 
 
             

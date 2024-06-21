@@ -250,14 +250,7 @@ def map_plotter(image, mask, ax=plt, type='dim'):
 
 
 
-# def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed']): # currently we just assume we are running everything, need to update though to be able to specify a baseline to run
-def get_mass_maps_scores(baselines = [
-    WatershedGroups(min_dist=10, compactness=0),
-    QuickshiftGroups(kernel_size=5, max_dist=10),
-    PatchGroups(num_patches=(8, 8), mode='count'),
-    MassMapsOracle(),
-    MassMapsOne()
-], subset=False):
+def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed', 'oracle', 'one'], subset=False):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     
     # Load model
@@ -280,7 +273,8 @@ def get_mass_maps_scores(baselines = [
     model.eval()
     mse_loss_all = 0
     total = 0
-    alignment_scores_all = [[] for _ in range(len(baselines))]
+    # alignment_scores_all = [[] for _ in range(len(baselines))]
+    all_baselines_scores = {}
     
     with torch.no_grad():
         for bi, batch in tqdm(enumerate(test_dataloader), total=len(test_dataloader)):
@@ -295,17 +289,42 @@ def get_mass_maps_scores(baselines = [
             total += X.shape[0]
     
             # baseline
-            for base_i, baseline in enumerate(baselines):
+            for base_i, baseline_name in enumerate(baselines):
+                if baseline_name == 'patch':
+                    baseline = PatchGroups(num_patches=(8, 8), mode='count')
+                elif baseline_name == 'quickshift':
+                    baseline = QuickshiftGroups(kernel_size=5, max_dist=10)
+                elif baseline_name == 'watershed':
+                    baseline = WatershedGroups(min_dist=10, compactness=0)
+                elif baseline_name =='oracle':
+                    baseline = MassMapsOracle()
+                elif baseline_name =='one':
+                    baseline = MassMapsOne()
+                else:
+                    raise Exception("Please indicate a valid baseline")
+                
                 groups = baseline(X)
     
                 # alignment
-                alignment_scores = massmaps_align(groups, X)
-                alignment_scores_all[base_i].extend(alignment_scores.flatten(1).cpu().numpy().tolist())
-            
-            
+                scores_batch = massmaps_align(groups, X)
+                scores_batch = scores_batch.flatten(1).cpu().numpy().tolist()
+
+                if baseline_name in all_baselines_scores.keys():
+                    scores = all_baselines_scores[baseline_name]
+                    scores = scores + scores_batch
+                else: 
+                    scores = scores_batch
+                all_baselines_scores[baseline_name] = scores
+                
+                # alignment_scores_all[base_i].extend(alignment_scores.flatten(1).cpu().numpy().tolist())
                 
     loss_avg = mse_loss_all / total
-    
     print(f'Omega_m loss {loss_avg[0].item():.4f}, sigma_8 loss {loss_avg[1].item():.4f}, avg loss {loss_avg.mean().item():.4f}')
 
-    return alignment_scores_all
+    # print(all_baselines_scores)
+    for baseline_name in baselines:
+        scores = torch.tensor(all_baselines_scores[baseline_name])
+        # print(f"Avg alignment of {baseline_name} features: {scores.mean():.4f}")
+        all_baselines_scores[baseline_name] = scores
+
+    return all_baselines_scores
