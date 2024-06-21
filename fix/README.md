@@ -42,8 +42,10 @@ pip install -U exlib
 ```
 
 ### FIX Notebooks
-Tutorial notebooks for each FIX setting are located in the [../notebooks/fix](https://github.com/BrachioLab/exlib/blob/master/notebooks/fix) folder.
+Tutorial notebooks for each FIX setting are located in the [../notebooks/fix](https://github.com/BrachioLab/exlib/blob/master/notebooks/fix) folder. 
 The main dependencies needed to run them are all installed in exlib or alternatively you can use our [Dockerfile](https://github.com/BrachioLab/dockerfiles/blob/main/riceric22/exlib/Dockerfile).
+
+For convenience, the notebooks can also be accessed on Colab, with links in our [website](https://brachiolab.github.io/fix/).
 
 ### FIX Baselines
 To run all baselines for every dataset setting, you can run the following script:
