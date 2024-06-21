@@ -37,7 +37,7 @@ pip install exlib
 If you have exlib already installed, please check that you have the latest version:
 ```
 python -c "import exlib; print(exlib.__version__)"
-# This should print "0.0.2". If it does not, update the package by running:
+# This should print "0.1.0". If it does not, update the package by running:
 pip install -U exlib
 ```
 
