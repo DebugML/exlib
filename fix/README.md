@@ -70,7 +70,7 @@ Please cite the FIX paper as follows if you use the data or code from the FIX be
 @misc{jin2024fix,
   title={The FIX Benchmark: Extracting Features Interpretable to eXperts},
   author={Helen Jin and Shreya Havaldar and Chaehyeon Kim and Anton Xue and Weiqiu You and Helen Qu and Marco Gatti and Daniel A Hashimoto and Bhuvnesh Jain and Amin Madani and Masao Sako and Lyle Ungar and Eric Wong},
-  year={2024},
+  year={2024}
 }
 ```
 
