@@ -15,7 +15,7 @@ from exlib.datasets.emotion import get_emotion_scores
 
 
 all_settings_baselines = {
-    'cholec': ['patch', 'quickshift', 'watershed'],
+    'cholec': ['sam', 'patch', 'quickshift', 'watershed'],
     'chestx': ['patch', 'quickshift', 'watershed'],
     'mass_maps': ['patch', 'quickshift', 'watershed', 'oracle', 'one'],
     'supernova': ['chunk 5', 'chunk 10', 'chunk 15'], # chunk size

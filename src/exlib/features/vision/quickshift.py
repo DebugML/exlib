@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 class QuickshiftGroups(nn.Module):
     # Use quickshift to perform image segmentation
-    def __init__(self, kernel_size=10, max_dist=20, sigma=5, max_segs=64, flat=False):
+    def __init__(self, kernel_size=10, max_dist=20, sigma=5, max_segs=40, flat=False):
         super().__init__()
         self.kernel_size = kernel_size
         self.max_dist = max_dist
@@ -42,9 +42,9 @@ class QuickshiftGroups(nn.Module):
 
     def forward(self, x):
         # x: (N,C,H,W)
-        segs = torch.stack([self.quickshift(xi.cpu()) for xi in x]) # (N,H,W)
-        if not self.flat:
-            return F.one_hot(segs).permute(0,3,1,2).to(x.device) # (N,M,H,W)
-        return segs.to(x.device)
-
+        segs = torch.stack([self.quickshift(xi.cpu()) for xi in x]).to(x.device) # (N,H,W)
+        if self.flat:
+            return segs
+        else:
+            return F.one_hot(segs, num_classes=self.max_segs).permute(0,3,1,2) # (N,M,H,W)
 

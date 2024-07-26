@@ -15,6 +15,7 @@ import exlib
 from exlib.features.vision.patch import PatchGroups
 from exlib.features.vision.quickshift import QuickshiftGroups
 from exlib.features.vision.watershed import WatershedGroups
+from exlib.features.vision.sam import SamSegmenterGroups
 
 HF_DATA_REPO = "BrachioLab/cholecystectomy_segmentation"
 
@@ -133,10 +134,11 @@ def get_cholec_scores(
     dataset = CholecDataset(split="test"),
     metric = CholecMetric(),
     N = 100,
-    batch_size = 4,
+    batch_size = 1,
+    device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
     dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=True)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
     
     all_baselines_scores = {}
     for item in tqdm(dataloader):
@@ -147,12 +149,16 @@ def get_cholec_scores(
                 groups = QuickshiftGroups()
             elif baseline == 'watershed': # watershed
                 groups = WatershedGroups()
+            elif baseline == 'sam': # watershed
+                groups = SamSegmenterGroups()
 
-            image = item["image"]
+            groups.eval().to(device)
+
+            image = item["image"].to(device)
             with torch.no_grad():
-                organs_masks = F.one_hot(item["organs"]).permute(0,3,1,2)
+                organs_masks = F.one_hot(item["organs"]).permute(0,3,1,2).to(device)
                 pred_masks = groups(image)
-                score = metric(pred_masks, organs_masks) # (N,H,W)
+                score = metric(pred_masks, organs_masks).cpu() # (N,H,W)
 
                 if baseline in all_baselines_scores.keys():
                     scores = all_baselines_scores[baseline]

@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 
 class WatershedGroups(nn.Module):
-    def __init__(self, fp_size=10, min_dist=20, compactness=10, max_segs=64, 
+    def __init__(self, fp_size=10, min_dist=20, compactness=10, max_segs=32, 
                  normalize=False, flat=False):
         """
         compactness: Higher values result in more regularly-shaped watershed basins.
@@ -50,7 +50,9 @@ class WatershedGroups(nn.Module):
 
     def forward(self, x):
         # x: (N,C,H,W)
-        segs = torch.stack([self.watershed(xi.cpu()) for xi in x]) # (N,H,W)
-        if not self.flat:
-            return F.one_hot(segs).permute(0,3,1,2).to(x.device) # (N,M,H,W)
-        return segs.to(x.device)
+        segs = torch.stack([self.watershed(xi.cpu()) for xi in x]).to(x.device) # (N,H,W)
+        if self.flat:
+            return segs
+        else:
+            return F.one_hot(segs, num_classes=self.max_segs).permute(0,3,1,2) # (N,M,H,W)
+
