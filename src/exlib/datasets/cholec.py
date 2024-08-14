@@ -101,8 +101,9 @@ class CholecMetric(nn.Module):
 
     def forward(
         self,
-        groups_pred: torch.LongTensor(),
-        groups_true: torch.LongTensor(),
+        groups_pred: torch.LongTensor,
+        groups_true: torch.LongTensor,
+        big_batch: bool = False
     ):
         """
             groups_pred: (N,P,H W)
@@ -116,8 +117,17 @@ class CholecMetric(nn.Module):
         Gt = groups_true.bool().long()
 
         # Make (N,P,T)-shaped lookup tables for the intersection and union
-        inters = (Gp.view(N,P,1,H,W) * Gt.view(N,1,T,H,W)).sum(dim=(-1,-2))
-        unions = (Gp.view(N,P,1,H,W) + Gt.view(N,1,T,H,W)).clamp(0,1).sum(dim=(-1,-2))
+        if big_batch:
+            inters = (Gp.view(N,P,1,H,W) * Gt.view(N,1,T,H,W)).sum(dim=(-1,-2))
+            unions = (Gp.view(N,P,1,H,W) + Gt.view(N,1,T,H,W)).clamp(0,1).sum(dim=(-1,-2))
+        else:
+            # More memory-efficient
+            inters = torch.zeros(N,P,T).to(Gp.device)
+            unions = torch.zeros(N,P,T).to(Gp.device)
+            for i in range(P):
+                for j in range(T):
+                    inters[:,i,j] = (Gp[:,i] * Gt[:,j]).sum(dim=(-1,-2))
+                    unions[:,i,j] = (Gp[:,i] + Gt[:,j]).clamp(0,1).sum(dim=(-1,-2))
         ious = inters / unions  # (N,P,T)
         ious[~ious.isfinite()] = 0 # Set the bad values to a score of zero
         iou_maxs = ious.max(dim=-1).values   # (N,P): max_{gt in Gt} iou(gp, gt)
