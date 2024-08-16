@@ -178,6 +178,7 @@ def get_chestx_scores(
     metric = ChestXMetric(),
     N = 100,
     batch_size = 4,
+    device = "cpu",
 ):
     dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
@@ -187,14 +188,17 @@ def get_chestx_scores(
             if baseline == 'patch': # patch
                 groups = PatchGroups()
             elif baseline == 'quickshift': # quickshift
-                groups = QuickshiftGroups()
+                groups = QuickshiftGroups(max_segs=20)
             elif baseline == 'watershed': # watershed
-                groups = WatershedGroups()
+                groups = WatershedGroups(max_segs=20)
 
             image = item["image"]
             with torch.no_grad():
                 structs_masks = item["structs"]
                 pred_masks = groups(image)
+
+                structs_masks = structs_masks.to(device)
+                pred_masks = pred_masks.to(device)
                 score = metric(pred_masks, structs_masks) # (N,H,W)
 
                 if baseline in all_baselines_scores.keys():

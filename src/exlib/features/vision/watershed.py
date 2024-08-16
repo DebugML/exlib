@@ -1,25 +1,33 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from skimage.segmentation import watershed
+import skimage.segmentation as seg
 from scipy import ndimage as ndi
-from skimage.feature import peak_local_max
+import skimage.feature as feat
 import torch.nn.functional as F
 
+from .common import relabel_segments_by_proximity
 
 class WatershedGroups(nn.Module):
-    def __init__(self, fp_size=10, min_dist=20, compactness=10, max_segs=32, 
-                 normalize=False, flat=False):
+    def __init__(
+        self,
+        max_segs: int = 16, 
+        footprint_size: int = 10,
+        min_dist: int = 20,
+        compactness: float = 10.,
+        normalize: bool = False,
+        flat: bool = False
+    ):
         """
         compactness: Higher values result in more regularly-shaped watershed basins.
         """
         super().__init__()
-        self.fp_size = fp_size
+        self.max_segs = max_segs
+        self.footprint_size = footprint_size
         self.min_dist = min_dist
         self.compactness = compactness
-        self.max_segs = max_segs
+        self.normalize = normalize
         self.flat = flat
-        self.normalize=normalize
 
     def watershed(self, image):
         # image is (C,H,W)
@@ -27,25 +35,27 @@ class WatershedGroups(nn.Module):
             image = (image - image.min()) / (image.max() - image.min())
         image = (image.mean(dim=0).numpy() * 255).astype(np.uint8)
         distance = ndi.distance_transform_edt(image)
-        coords = peak_local_max(
+        coords = feat.peak_local_max(
             distance,
             min_distance=self.min_dist,
-            footprint=np.ones((self.fp_size,self.fp_size)),
+            footprint=np.ones((self.footprint_size,self.footprint_size)),
             labels=image,
         )
-        # coords = peak_local_max(distance, min_distance=10, labels=image)
+        # coords = feat.peak_local_max(distance, min_distance=10, labels=image)
         mask = np.zeros(distance.shape, dtype=bool)
         mask[tuple(coords.T)] = True
         markers, _ = ndi.label(mask)
-        segs = watershed(
+        segs = seg.watershed(
             -distance,
             markers,
-            mask=image,
+            mask = image,
             compactness = self.compactness
         )
         segs = torch.tensor(segs)
-        div_by = (segs.unique().max() / self.max_segs).long().item() + 1
-        segs = segs // div_by
+        segs = relabel_segments_by_proximity(segs)
+        if segs.unique().max() + 1 >= self.max_segs:
+            div_by = (segs.unique().max() + 1) / self.max_segs
+            segs = segs // div_by
         return segs.long() # (H,W) of integers
 
     def forward(self, x):

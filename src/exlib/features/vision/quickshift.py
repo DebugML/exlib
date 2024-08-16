@@ -4,10 +4,18 @@ import numpy as np
 from skimage.segmentation import quickshift
 import torch.nn.functional as F
 
+from .common import relabel_segments_by_proximity
 
 class QuickshiftGroups(nn.Module):
     # Use quickshift to perform image segmentation
-    def __init__(self, kernel_size=10, max_dist=20, sigma=5, max_segs=40, flat=False):
+    def __init__(
+        self,
+        max_segs: int = 16.,
+        kernel_size: float = 8.,
+        max_dist: float = 100.,
+        sigma: float = 10.,
+        flat: bool = False
+    ):
         super().__init__()
         self.kernel_size = kernel_size
         self.max_dist = max_dist
@@ -36,8 +44,10 @@ class QuickshiftGroups(nn.Module):
         )
 
         segs = torch.tensor(segs)
-        div_by = (segs.unique().max() / self.max_segs).long().item() + 1
-        segs = segs // div_by
+        segs = relabel_segments_by_proximity(segs)
+        if segs.unique().max() + 1 >= self.max_segs:
+            div_by = (segs.unique().max() + 1) / self.max_segs
+            segs = segs // div_by
         return segs.long() # (H,W) of integers
 
     def forward(self, x):

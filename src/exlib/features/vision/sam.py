@@ -11,7 +11,7 @@ file_dir_path = os.path.dirname(os.path.realpath(__file__))
 from segment_anything import sam_model_registry, SamPredictor
 from segment_anything import build_sam, SamAutomaticMaskGenerator
 
-from .common import *
+from .common import relabel_segments_by_proximity
 
 
 DOWNLOAD_URLS = {
@@ -23,10 +23,10 @@ DOWNLOAD_URLS = {
 class SamSegmenterGroups(nn.Module):
     def __init__(
         self,
+        max_segs: int = 32,
         model_name: str = 'vit_h',
         model_dir: Optional[str] = None,
         download: bool = True,
-        max_segs: int = 64,
         flat: bool = False,
     ):
         super().__init__()
@@ -62,10 +62,15 @@ class SamSegmenterGroups(nn.Module):
         for xi in x:
             xi_np = (xi * 255).byte().permute(1,2,0).cpu().numpy()
             outs = self.mask_generator.generate(xi_np)
-            seg = sum([k * o["segmentation"] for (k,o) in enumerate(outs)])
-            all_segs.append(torch.LongTensor(seg))
+            segs = sum([k * o["segmentation"] for (k,o) in enumerate(outs)])
+            segs = torch.LongTensor(segs)
+            segs = relabel_segments_by_proximity(segs)
+            if segs.unique().max() + 1 >= self.max_segs:
+                div_by = (segs.unique().max() + 1) / self.max_segs
+                segs = segs // div_by
+            all_segs.append(segs.long())
 
-        all_segs = torch.stack(all_segs).clamp(0,self.max_segs-1).to(x.device)  # (N,H,W)
+        all_segs = torch.stack(all_segs).to(x.device) # (N,H,W)
         if self.flat:
             return all_segs
         else:
