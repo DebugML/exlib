@@ -11,7 +11,7 @@ file_dir_path = os.path.dirname(os.path.realpath(__file__))
 from segment_anything import sam_model_registry, SamPredictor
 from segment_anything import build_sam, SamAutomaticMaskGenerator
 
-from .common import relabel_segments_by_proximity
+from .common import defragment_segments, relabel_segments_by_proximity
 
 
 DOWNLOAD_URLS = {
@@ -64,6 +64,7 @@ class SamSegmenterGroups(nn.Module):
             outs = self.mask_generator.generate(xi_np)
             segs = sum([k * o["segmentation"] for (k,o) in enumerate(outs)])
             segs = torch.LongTensor(segs)
+            segs = defragment_segments(segs) # SAM often skips labels
             segs = relabel_segments_by_proximity(segs)
             if segs.unique().max() + 1 >= self.max_segs:
                 div_by = (segs.unique().max() + 1) / self.max_segs

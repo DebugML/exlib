@@ -17,6 +17,7 @@ class Segmenter(nn.Module):
         raise NotImplementedError()
     
 
+
 def compress_masks(data, resize_to=None, min_size=0):
     if resize_to is not None:
         data_resized = torch.stack([(torch.tensor(resize(mask, 
@@ -44,6 +45,27 @@ def compress_masks(data, resize_to=None, min_size=0):
     masks[masks == -1] = torch.max(masks) + 1
     
     return masks
+
+
+def defragment_segments(segments: torch.LongTensor):
+    """
+    Sometimes the segment is not labeled in order (e.g., from SAM).
+    Input:
+        [[0, 1, 2],
+         [4, 5, 6],
+         [8, 9, 10]]
+
+    Output:
+        [[0, 1, 2],
+         [3, 4, 5],
+         [6, 7, 8]]
+    """
+    assert segments.ndim == 2
+    uniques = segments.unique()
+    new_segments = segments.clone()
+    for i, k in enumerate(uniques):
+        new_segments[segments == k] = i
+    return new_segments
 
 
 def relabel_segments_by_proximity(segments: torch.LongTensor):
