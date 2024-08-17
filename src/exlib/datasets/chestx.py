@@ -14,9 +14,7 @@ import sys
 from tqdm import tqdm
 sys.path.append("../src")
 import exlib
-from exlib.features.vision.patch import PatchGroups
-from exlib.features.vision.quickshift import QuickshiftGroups
-from exlib.features.vision.watershed import WatershedGroups
+from exlib.features.vision import *
 
 
 HF_DATA_REPO = "BrachioLab/chestx"
@@ -173,12 +171,12 @@ class ChestXMetric(nn.Module):
 
 
 def get_chestx_scores(
-    baselines = ['patch', 'quickshift', 'watershed'],
+    baselines = ['patch', 'quickshift', 'watershed', 'identity', 'random', 'sam'],
     dataset = ChestXDataset(split="test"),
     metric = ChestXMetric(),
     N = 100,
     batch_size = 4,
-    device = "cpu",
+    device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
     dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
@@ -191,6 +189,14 @@ def get_chestx_scores(
                 groups = QuickshiftGroups(max_segs=20)
             elif baseline == 'watershed': # watershed
                 groups = WatershedGroups(max_segs=20)
+            elif baseline == 'identity':
+                groups = IdentityGroups()
+            elif baseline == 'random':
+                groups = RandomGroups(max_segs=20)
+            elif baseline == 'sam':
+                groups = SamGroups(max_segs=20)
+
+            groups.eval().to(device)
 
             image = item["image"]
             with torch.no_grad():

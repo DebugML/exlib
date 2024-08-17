@@ -20,7 +20,7 @@ DOWNLOAD_URLS = {
     'vit_b': 'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth'
 }
 
-class SamSegmenterGroups(nn.Module):
+class SamGroups(nn.Module):
     def __init__(
         self,
         max_segs: int = 32,
@@ -56,10 +56,14 @@ class SamSegmenterGroups(nn.Module):
                 shutil.copyfileobj(r.raw, f)
         print('Done downloading model.')
 
+    @torch.no_grad
     def forward(self, x):
         # x: (N,C,H,W)
         all_segs = []
         for xi in x:
+            assert xi.ndim == 3
+            if xi.size(0) == 1:
+                xi = xi.repeat(3,1,1)
             xi_np = (xi * 255).byte().permute(1,2,0).cpu().numpy()
             outs = self.mask_generator.generate(xi_np)
             segs = sum([k * o["segmentation"] for (k,o) in enumerate(outs)])

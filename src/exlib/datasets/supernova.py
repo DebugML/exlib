@@ -22,7 +22,7 @@ import yaml
 from collections import namedtuple
 import huggingface_hub as hfhub
 
-from exlib.datasets.supernova_helper import *
+from exlib.utils.supernova_helper import *
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 

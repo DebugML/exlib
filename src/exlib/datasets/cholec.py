@@ -12,10 +12,7 @@ import sys
 from tqdm import tqdm
 sys.path.append("../src")
 import exlib
-from exlib.features.vision.patch import PatchGroups
-from exlib.features.vision.quickshift import QuickshiftGroups
-from exlib.features.vision.watershed import WatershedGroups
-from exlib.features.vision.sam import SamSegmenterGroups
+from exlib.features.vision import *
 
 HF_DATA_REPO = "BrachioLab/cholecystectomy_segmentation"
 
@@ -140,11 +137,11 @@ class CholecMetric(nn.Module):
 
 
 def get_cholec_scores(
-    baselines = ['patch', 'quickshift', 'watershed'],
+    baselines = ['patch', 'quickshift', 'watershed', 'identity', 'random', 'sam'],
     dataset = CholecDataset(split="test"),
     metric = CholecMetric(),
     N = 100,
-    batch_size = 1,
+    batch_size = 4,
     device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
     dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
@@ -156,11 +153,15 @@ def get_cholec_scores(
             if baseline == 'patch': # patch
                 groups = PatchGroups()
             elif baseline == 'quickshift': # quickshift
-                groups = QuickshiftGroups()
+                groups = QuickshiftGroups(max_segs=8)
             elif baseline == 'watershed': # watershed
-                groups = WatershedGroups()
+                groups = WatershedGroups(max_segs=8)
+            elif baseline == 'identity':
+                groups = IdentityGroups()
+            elif baseline == 'random':
+                groups = RandomGroups(max_segs=8)
             elif baseline == 'sam': # watershed
-                groups = SamSegmenterGroups()
+                groups = SamGroups(max_segs=8)
 
             groups.eval().to(device)
 
