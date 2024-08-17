@@ -151,17 +151,17 @@ def get_cholec_scores(
     for item in tqdm(dataloader):
         for baseline in baselines:
             if baseline == 'patch': # patch
-                groups = PatchGroups()
+                groups = PatchGroups(grid_size=(8,14), mode="grid")
             elif baseline == 'quickshift': # quickshift
-                groups = QuickshiftGroups(max_segs=8)
+                groups = QuickshiftGroups(max_groups=8)
             elif baseline == 'watershed': # watershed
-                groups = WatershedGroups(max_segs=8)
+                groups = WatershedGroups(max_groups=8)
             elif baseline == 'identity':
                 groups = IdentityGroups()
             elif baseline == 'random':
-                groups = RandomGroups(max_segs=8)
+                groups = RandomGroups(max_groups=8)
             elif baseline == 'sam': # watershed
-                groups = SamGroups(max_segs=8)
+                groups = SamGroups(max_groups=8)
 
             groups.eval().to(device)
 

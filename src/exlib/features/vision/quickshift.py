@@ -10,7 +10,7 @@ class QuickshiftGroups(nn.Module):
     # Use quickshift to perform image segmentation
     def __init__(
         self,
-        max_segs: int = 16.,
+        max_groups: int = 16.,
         kernel_size: float = 8.,
         max_dist: float = 100.,
         sigma: float = 10.,
@@ -20,7 +20,7 @@ class QuickshiftGroups(nn.Module):
         self.kernel_size = kernel_size
         self.max_dist = max_dist
         self.sigma = sigma
-        self.max_segs = max_segs
+        self.max_groups = max_groups
         self.flat = flat
 
     def quickshift(self, image):
@@ -45,8 +45,8 @@ class QuickshiftGroups(nn.Module):
 
         segs = torch.tensor(segs)
         segs = relabel_segments_by_proximity(segs)
-        if segs.unique().max() + 1 >= self.max_segs:
-            div_by = (segs.unique().max() + 1) / self.max_segs
+        if segs.unique().max() + 1 >= self.max_groups:
+            div_by = (segs.unique().max() + 1) / self.max_groups
             segs = segs // div_by
         return segs.long() # (H,W) of integers
 
@@ -56,5 +56,5 @@ class QuickshiftGroups(nn.Module):
         if self.flat:
             return segs
         else:
-            return F.one_hot(segs, num_classes=self.max_segs).permute(0,3,1,2) # (N,M,H,W)
+            return F.one_hot(segs, num_classes=self.max_groups).permute(0,3,1,2) # (N,M,H,W)
 

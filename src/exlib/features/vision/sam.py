@@ -23,7 +23,7 @@ DOWNLOAD_URLS = {
 class SamGroups(nn.Module):
     def __init__(
         self,
-        max_segs: int = 32,
+        max_groups: int = 32,
         model_name: str = 'vit_h',
         model_dir: Optional[str] = None,
         download: bool = True,
@@ -42,7 +42,7 @@ class SamGroups(nn.Module):
         self.sam = sam_model_registry[model_name](checkpoint=filename)
         self.sam.eval()
         self.mask_generator = SamAutomaticMaskGenerator(self.sam)
-        self.max_segs = max_segs
+        self.max_groups = max_groups
         self.flat = flat
 
     def download_model(self, model_name):
@@ -70,8 +70,8 @@ class SamGroups(nn.Module):
             segs = torch.LongTensor(segs)
             segs = defragment_segments(segs) # SAM often skips labels
             segs = relabel_segments_by_proximity(segs)
-            if segs.unique().max() + 1 >= self.max_segs:
-                div_by = (segs.unique().max() + 1) / self.max_segs
+            if segs.unique().max() + 1 >= self.max_groups:
+                div_by = (segs.unique().max() + 1) / self.max_groups
                 segs = segs // div_by
             all_segs.append(segs.long())
 
@@ -79,6 +79,6 @@ class SamGroups(nn.Module):
         if self.flat:
             return all_segs
         else:
-            return F.one_hot(all_segs, num_classes=self.max_segs).permute(0,3,1,2) # (N,M,H,W)
+            return F.one_hot(all_segs, num_classes=self.max_groups).permute(0,3,1,2) # (N,M,H,W)
 
 
