@@ -146,6 +146,8 @@ def get_cholec_scores(
 ):
     dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+    resizer = tfs.Resize((180,320)) # Originally (360,640)
     
     all_baselines_scores = {}
     for item in tqdm(dataloader):
@@ -163,16 +165,17 @@ def get_cholec_scores(
             elif baseline == 'sam': # watershed
                 groups = SamGroups(max_groups=8)
             elif baseline == 'neural_quickshift':
-                groups = NeuralQuickshift(max_groups=8)
+                groups = NeuralQuickshiftGroups(max_groups=8)
 
             groups.eval().to(device)
 
-            image = item["image"].to(device)
+            image = resizer(item["image"].to(device))
 
             with torch.no_grad():
-                organs_masks = F.one_hot(item["organs"]).permute(0,3,1,2).to(device)
+                organ_masks = F.one_hot(item["organs"]).permute(0,3,1,2).to(device)
+                organ_masks = resizer(organ_masks.float()).long()
                 pred_masks = groups(image)
-                score = metric(pred_masks, organs_masks).cpu() # (N,H,W)
+                score = metric(pred_masks, organ_masks).cpu() # (N,H,W)
 
                 if baseline in all_baselines_scores.keys():
                     scores = all_baselines_scores[baseline]
