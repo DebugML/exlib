@@ -87,7 +87,8 @@ def relabel_segments_by_proximity(segments: torch.LongTensor):
          [4, 5, 6]]
     """
     assert segments.ndim == 2 # (H,W)
-    segments = segments.detach().cpu().numpy()
+    device = segments.device
+    segments = segments.cpu().numpy()
     props = regionprops(segments)
     centroids = np.array([prop.centroid for prop in props])
     
@@ -107,5 +108,5 @@ def relabel_segments_by_proximity(segments: torch.LongTensor):
     for old_label, new_label in old_to_new.items():
         new_segments[segments == old_label] = new_label
 
-    return torch.tensor(new_segments)
+    return torch.tensor(new_segments).to(device)
 

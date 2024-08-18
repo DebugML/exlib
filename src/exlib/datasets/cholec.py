@@ -162,10 +162,13 @@ def get_cholec_scores(
                 groups = RandomGroups(max_groups=8)
             elif baseline == 'sam': # watershed
                 groups = SamGroups(max_groups=8)
+            elif baseline == 'neural_quickshift':
+                groups = NeuralQuickshift(max_groups=8)
 
             groups.eval().to(device)
 
             image = item["image"].to(device)
+
             with torch.no_grad():
                 organs_masks = F.one_hot(item["organs"]).permute(0,3,1,2).to(device)
                 pred_masks = groups(image)

@@ -195,10 +195,13 @@ def get_chestx_scores(
                 groups = RandomGroups(max_groups=20)
             elif baseline == 'sam':
                 groups = SamGroups(max_groups=20)
+            elif baseline == "neural_quickshift":
+                groups = NeuralQuickshiftGroups(max_groups=20)
 
             groups.eval().to(device)
 
-            image = item["image"]
+            image = item["image"].to(device)
+
             with torch.no_grad():
                 structs_masks = item["structs"]
                 pred_masks = groups(image)
