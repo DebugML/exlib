@@ -174,11 +174,12 @@ def get_chestx_scores(
     baselines = ['patch', 'quickshift', 'watershed', 'identity', 'random', 'sam'],
     dataset = ChestXDataset(split="test"),
     metric = ChestXMetric(),
-    N = 100,
-    batch_size = 4,
+    N = 1024,
+    batch_size = 16,
     device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
-    dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
+    if N < len(dataset):
+        dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
     all_baselines_scores = {}
     for item in tqdm(dataloader):
@@ -195,7 +196,7 @@ def get_chestx_scores(
                 groups = RandomGroups(max_groups=20)
             elif baseline == 'sam':
                 groups = SamGroups(max_groups=20)
-            elif baseline == "neural_quickshift":
+            elif baseline == "ace":   # ACE
                 groups = NeuralQuickshiftGroups(max_groups=20)
             elif baseline == "craft":
                 groups = CraftGroups(max_groups=20)

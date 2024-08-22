@@ -140,11 +140,12 @@ def get_cholec_scores(
     baselines = ["patch", "quickshift", "watershed", "identity", "random", "sam"],
     dataset = CholecDataset(split="test"),
     metric = CholecMetric(),
-    N = 100,
+    N = 1024,
     batch_size = 4,
     device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
-    dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
+    if N < len(dataset):
+        dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     resizer = tfs.Resize((180,320)) # Originally (360,640)
@@ -164,9 +165,9 @@ def get_cholec_scores(
                 groups = RandomGroups(max_groups=8)
             elif baseline == "sam": # watershed
                 groups = SamGroups(max_groups=8)
-            elif baseline == "neural_quickshift":
+            elif baseline == "ace":
                 groups = NeuralQuickshiftGroups(max_groups=8)
-            elif baseline == "craft_groups":
+            elif baseline == "craft":
                 groups = CraftGroups(max_groups=8)
 
             groups.eval().to(device)

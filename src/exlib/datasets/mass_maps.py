@@ -16,9 +16,7 @@ sys.path.append("../src")
 import exlib
 # Baselines
 from exlib.features.vision.mass_maps import MassMapsOracle, MassMapsOne
-from exlib.features.vision.watershed import WatershedGroups
-from exlib.features.vision.quickshift import QuickshiftGroups
-from exlib.features.vision.patch import PatchGroups
+from exlib.features.vision import *
 
 
 DATASET_REPO = "BrachioLab/massmaps-cosmogrid-100k"
@@ -250,9 +248,13 @@ def map_plotter(image, mask, ax=plt, type='dim'):
 
 
 
-def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed', 'oracle', 'one'], subset=False):
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    
+def get_mass_maps_scores(
+    baselines = ['patch', 'quickshift', 'watershed', 'oracle', 'one'],
+    subset = False,
+    N = 1024,
+    batch_size = 16,
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+):
     # Load model
     model = MassMapsConvnetForImageRegression.from_pretrained(MODEL_REPO) # BrachioLab/massmaps-conv
     model = model.to(device)
@@ -266,8 +268,9 @@ def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed', 'oracl
     test_dataset.set_format('torch', columns=['input', 'label'])
     
     massmaps_align = MassMapsAlignment()
-    
-    batch_size = 16
+
+    if N < len(test_dataset):
+        test_dataset, _ = torch.utils.data.random_split(test_dataset, [N, len(test_dataset)-N])
     test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size)
 
     model.eval()
@@ -291,17 +294,27 @@ def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed', 'oracl
             # baseline
             for base_i, baseline_name in enumerate(baselines):
                 if baseline_name == 'patch':
-                    baseline = PatchGroups(num_patches=(8, 8), mode='count')
+                    baseline = PatchGroups(grid_size=(8,8), mode='grid')
                 elif baseline_name == 'quickshift':
-                    baseline = QuickshiftGroups(kernel_size=5, max_dist=10)
+                    baseline = QuickshiftGroups(kernel_size=5, max_dist=10, sigma=0.2, max_groups=25)
                 elif baseline_name == 'watershed':
-                    baseline = WatershedGroups(min_dist=10, compactness=0)
+                    baseline = WatershedGroups(min_dist=10, compactness=0, max_groups=25)
                 elif baseline_name =='oracle':
                     baseline = MassMapsOracle()
-                elif baseline_name =='one':
+                elif baseline_name == 'identity':
                     baseline = MassMapsOne()
+                elif baseline_name == 'random':
+                    baseline = RandomGroups(max_groups=25)
+                elif baseline_name == 'sam':
+                    baseline = SamGroups(max_groups=25)
+                elif baseline_name == 'ace':
+                    baseline = NeuralQuickshiftGroups(max_groups=25)
+                elif baseline_name == 'craft':
+                    baseline = CraftGroups(max_groups=25)
                 else:
                     raise Exception("Please indicate a valid baseline")
+
+                baseline.eval().to(device)
                 
                 groups = baseline(X)
     

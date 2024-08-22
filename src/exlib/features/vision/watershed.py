@@ -53,6 +53,7 @@ class WatershedGroups(nn.Module):
         )
         segs = torch.tensor(segs)
         segs = relabel_segments_by_proximity(segs)
+
         if segs.unique().max() + 1 >= self.max_groups:
             div_by = (segs.unique().max() + 1) / self.max_groups
             segs = segs // div_by

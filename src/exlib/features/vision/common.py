@@ -87,11 +87,15 @@ def relabel_segments_by_proximity(segments: torch.LongTensor):
          [4, 5, 6]]
     """
     assert segments.ndim == 2 # (H,W)
+
+    if segments.unique().numel() < 5:
+        return segments.clone()
+
     device = segments.device
     segments = segments.cpu().numpy()
     props = regionprops(segments)
     centroids = np.array([prop.centroid for prop in props])
-    
+
     # Pair-wise distance between centroids
     distance_matrix = squareform(pdist(centroids))
     

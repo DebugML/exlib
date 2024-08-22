@@ -48,8 +48,8 @@ class QuickshiftGroups(nn.Module):
         self,
         max_groups: int = 16,
         kernel_size: float = 8.,
-        max_dist: float = 100.,
-        sigma: float = 10.,
+        max_dist: float = 20.,
+        sigma: float = 1.,
         flat: bool = False
     ):
         super().__init__()
@@ -74,7 +74,7 @@ class QuickshiftGroups(nn.Module):
 
             segs = relabel_segments_by_proximity(segs)
 
-            if segs.unique().max() + 1 >= self.max_groups:
+            if segs.unique().numel() > self.max_groups:
                 div_by = (segs.unique().max() + 1) / self.max_groups
                 segs = (segs // div_by).long()
 
