@@ -197,6 +197,8 @@ def get_chestx_scores(
                 groups = SamGroups(max_groups=20)
             elif baseline == "neural_quickshift":
                 groups = NeuralQuickshiftGroups(max_groups=20)
+            elif baseline == "craft":
+                groups = CraftGroups(max_groups=20)
 
             groups.eval().to(device)
 

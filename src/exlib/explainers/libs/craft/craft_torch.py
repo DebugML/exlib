@@ -341,7 +341,8 @@ class Craft(BaseConceptExtractor):
         self.activation_shape = None
         self.device = device
 
-    def fit(self, inputs: np.ndarray):
+
+    def fit(self, inputs: torch.Tensor, return_patch_masks: bool = False):
         """
         Fit the Craft model to the input data.
 
@@ -370,7 +371,14 @@ class Craft(BaseConceptExtractor):
         patches = torch.nn.functional.unfold(inputs, kernel_size=self.patch_size, stride=strides)
         patches = patches.transpose(1, 2).contiguous().view(-1, 3, self.patch_size, self.patch_size)
 
-        return patches
+        # Anton: we want to extract the masks for each patch
+        N, _, H, W = inputs.shape
+        K = self.patch_size
+        masks = torch.zeros(H//strides, W//strides, H, W)
+        for h in range(H//strides):
+            for w in range(W//strides):
+                masks[h, w, h*strides:h*strides+K, w*strides:w*strides+K] = torch.ones((K, K))
+        masks = masks.view(-1,H,W)
 
         # encode the patches and obtain the activations
         activations = _batch_inference(self.input_to_latent, patches, self.batch_size, image_size, 
@@ -392,7 +400,16 @@ class Craft(BaseConceptExtractor):
         self.reducer = reducer
         self.W = np.array(W, dtype=np.float32)
 
-        return patches, U, W
+        # Anton: adjust shapes
+        patches = patches.view(N,-1,3,K,K).to(inputs.device)
+        U = torch.tensor(U).view(N,-1,self.number_of_concepts).to(inputs.device)
+        W = torch.tensor(W).to(inputs.device)
+        masks = masks.to(inputs.device)
+
+        if return_patch_masks:
+            return patches, U, W, masks
+        else:
+            return patches, U, W
 
     def check_if_fitted(self):
         """Checks if the factorization model has been fitted to input data.
