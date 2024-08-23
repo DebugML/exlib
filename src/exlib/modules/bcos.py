@@ -18,12 +18,15 @@ class BCos(nn.Module):
 
         self.model = torch.hub.load('B-cos/B-cos-v2', model_name, pretrained=True)
 
+    def prepare_data(self, x):
+        return AddInverse()(x)
+
     def forward(self, x, t=None):
         attrs = []
         preds = []
         for i in range(len(x)):
             images = x[i:i+1].clone().requires_grad_()
-            in_tensor = AddInverse()(images)
+            in_tensor = self.prepare_data(images)
 
             if t is None:
                 idx = None
