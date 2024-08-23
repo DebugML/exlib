@@ -12,9 +12,7 @@ import sys
 from tqdm import tqdm
 sys.path.append("../src")
 import exlib
-from exlib.features.vision.patch import PatchGroups
-from exlib.features.vision.quickshift import QuickshiftGroups
-from exlib.features.vision.watershed import WatershedGroups
+from exlib.features.vision import *
 
 HF_DATA_REPO = "BrachioLab/cholecystectomy_segmentation"
 
@@ -34,7 +32,7 @@ class CholecDataset(torch.utils.data.Dataset):
 
     def __init__(
         self,
-        split: str = "all_data",
+        split: str = "train",
         hf_data_repo: str = HF_DATA_REPO,
         image_size: tuple[int] = (360, 640)
     ):
@@ -100,8 +98,9 @@ class CholecMetric(nn.Module):
 
     def forward(
         self,
-        groups_pred: torch.LongTensor(),
-        groups_true: torch.LongTensor(),
+        groups_pred: torch.LongTensor,
+        groups_true: torch.LongTensor,
+        big_batch: bool = False
     ):
         """
             groups_pred: (N,P,H W)
@@ -114,46 +113,72 @@ class CholecMetric(nn.Module):
         Gp = groups_pred.bool().long()
         Gt = groups_true.bool().long()
 
-        # Make (N,P,T)-shaped lookup tables for the intersection-over-trues
-        inters = (Gp.view(N,P,1,H,W) * Gt.view(N,1,T,H,W)).sum(dim=(-1,-2))
-        iogs = inters / Gt.view(N,1,T,H,W).sum(dim=(-1,-2)) # (N,P,T)
-        iogs[~iogs.isfinite()] = 0 # Set the bad values to a score of zero
-        iog_maxs = iogs.max(dim=-1).values   # (N,P): max_{gt in Gt} iog(gp, gt)
+        # Make (N,P,T)-shaped lookup tables for the intersection and union
+        if big_batch:
+            inters = (Gp.view(N,P,1,H,W) * Gt.view(N,1,T,H,W)).sum(dim=(-1,-2))
+            unions = (Gp.view(N,P,1,H,W) + Gt.view(N,1,T,H,W)).clamp(0,1).sum(dim=(-1,-2))
+        else:
+            # More memory-efficient
+            inters = torch.zeros(N,P,T).to(Gp.device)
+            unions = torch.zeros(N,P,T).to(Gp.device)
+            for i in range(P):
+                for j in range(T):
+                    inters[:,i,j] = (Gp[:,i] * Gt[:,j]).sum(dim=(-1,-2))
+                    unions[:,i,j] = (Gp[:,i] + Gt[:,j]).clamp(0,1).sum(dim=(-1,-2))
+        ious = inters / unions  # (N,P,T)
+        ious[~ious.isfinite()] = 0 # Set the bad values to a score of zero
+        iou_maxs = ious.max(dim=-1).values   # (N,P): max_{gt in Gt} iou(gp, gt)
 
         # sum_{gp in group_preds(feature)} iou_max(gp, Gt)
-        pred_aligns_sum = (Gp * iog_maxs.view(N,P,1,1)).sum(dim=1) # (N,H,W)
+        pred_aligns_sum = (Gp * iou_maxs.view(N,P,1,1)).sum(dim=1) # (N,H,W)
         score = pred_aligns_sum / Gp.sum(dim=1) # (N,H,W), division is the |Gp(feaure)|
         score[~score.isfinite()] = 0    # Make div-by-zero things zero
         return score    # (N,H,W), a score for each feature
 
 
-
-
 def get_cholec_scores(
-    baselines = ['patch', 'quickshift', 'watershed'],
+    baselines = ["patch", "quickshift", "watershed", "identity", "random", "sam"],
     dataset = CholecDataset(split="test"),
     metric = CholecMetric(),
-    N = 100,
+    N = 1024,
     batch_size = 4,
+    device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
-    dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=True)
+    if N < len(dataset):
+        dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+    resizer = tfs.Resize((180,320)) # Originally (360,640)
     
     all_baselines_scores = {}
     for item in tqdm(dataloader):
         for baseline in baselines:
-            if baseline == 'patch': # patching
-                groups = PatchGroups()
-            elif baseline == 'quickshift': # quickshift
-                groups = QuickshiftGroups()
-            elif baseline == 'watershed': # watershed
-                groups = WatershedGroups()
+            if baseline == "patch": # patch
+                groups = PatchGroups(grid_size=(8,14), mode="grid")
+            elif baseline == "quickshift": # quickshift
+                groups = QuickshiftGroups(max_groups=8)
+            elif baseline == "watershed": # watershed
+                groups = WatershedGroups(max_groups=8)
+            elif baseline == "identity":
+                groups = IdentityGroups()
+            elif baseline == "random":
+                groups = RandomGroups(max_groups=8)
+            elif baseline == "sam": # watershed
+                groups = SamGroups(max_groups=8)
+            elif baseline == "ace":
+                groups = NeuralQuickshiftGroups(max_groups=8)
+            elif baseline == "craft":
+                groups = CraftGroups(max_groups=8)
 
-            image = item["image"]
+            groups.eval().to(device)
+
+            image = resizer(item["image"].to(device))
+
             with torch.no_grad():
-                organs_masks = F.one_hot(item["organs"]).permute(0,3,1,2)
-                masks = F.one_hot(groups(image)).permute(0,3,1,2)
-                score = metric(masks, organs_masks) # (N,H,W)
+                organ_masks = F.one_hot(item["organs"]).permute(0,3,1,2).to(device)
+                organ_masks = resizer(organ_masks.float()).long()
+                pred_masks = groups(image)
+                score = metric(pred_masks, organ_masks).cpu() # (N,H,W)
 
                 if baseline in all_baselines_scores.keys():
                     scores = all_baselines_scores[baseline]
@@ -165,10 +190,9 @@ def get_cholec_scores(
     
     for baseline in baselines:
         scores = torch.cat(all_baselines_scores[baseline])
-        print(f"Avg alignment of {baseline} features: {scores.mean():.4f}")
+        # print(f"Avg alignment of {baseline} features: {scores.mean():.4f}")
         all_baselines_scores[baseline] = scores
 
     return all_baselines_scores
     
     
-

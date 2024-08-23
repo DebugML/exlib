@@ -1,6 +1,7 @@
 import torch
 from transformers import AutoModel, AutoTokenizer
 import numpy as np
+import pandas as pd
 import tqdm
 from tqdm import tqdm
 from torch.utils.data import DataLoader
@@ -8,19 +9,30 @@ from datasets import load_dataset
 import torch.nn as nn
 import sentence_transformers
 
+import sys
+sys.path.append("../src")
+import exlib
+# Baselines
+from exlib.features.text.text_chunk import text_chunk
+from exlib.utils.emotion_helper import project_points_onto_axes, load_emotions
 
-DATASET_REPO = "go_emotions"
-MODEL_REPO = "shreyahavaldar/roberta-base-go_emotions"
+
+MODEL_REPO = "BrachioLab/roberta-base-go_emotions"
+DATASET_REPO = "BrachioLab/emotion"
 TOKENIZER_REPO = "roberta-base"
+
 
 def load_data():
     hf_dataset = load_dataset(DATASET_REPO)
     return hf_dataset
 
+
 def load_model():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = AutoModel.from_pretrained(MODEL_REPO)
     model.to(device)
     return model
+
 
 #go emotions dataset
 class EmotionDataset(torch.utils.data.Dataset):
@@ -73,12 +85,20 @@ class Metric(nn.Module):
         self.y2 = points[2]
 
     def define_circumplex(self):
-        emotions = pd.read_csv("../src/exlib/utils/russell_emotions.csv")
-        axis_labels = ["NV", "PV", "HA", "LA"]
+        # Circumplex labels to emotions
+        label_to_emotions = {
+            # Positive valence
+            "PV": ["Happy", "Pleased", "Delighted", "Excited", "Satisfied"],
+            # Negative valence
+            "NV": ["Miserable", "Frustrated", "Sad", "Depressed", "Afraid"],
+            # High arousal
+            "HA": ["Astonished", "Alarmed", "Angry", "Afraid", "Excited"],
+            # Low arousal
+            "LA": ["Tired", "Sleepy", "Calm", "Satisfied", "Depressed"],
+        }
         axis_points = []
-        for label in axis_labels:
-            emotion_words = emotions[emotions["label"] == label]["emotion"].values
-            emotion_embeddings = self.model.encode(emotion_words)
+        for k, v in label_to_emotions.items():
+            emotion_embeddings = self.model.encode(np.array(v))
             axis_points.append(np.mean(emotion_embeddings, axis=0))
         return axis_points
     
@@ -130,7 +150,7 @@ class Metric(nn.Module):
 
 def get_emotion_scores(baselines = ['word', 'phrase', 'sentence']):
     dataset = EmotionDataset("test")
-    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = EmotionClassifier()
     model.to(device)
     model.eval()
@@ -139,7 +159,7 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence']):
     torch.manual_seed(1234)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
 
-    alignment_scores_all = {}
+    all_baselines_scores = {}
     for baseline in baselines:
         print(f"---- {baseline} Level Groups ----")
         
@@ -152,24 +172,7 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence']):
                 processed_word_lists.append([word for word in word_list if word != ''])
             
             for word_list in processed_word_lists:
-                groups = []
-                if baseline == 'word':
-                    for word in word_list:
-                        groups.append([word])
-                elif baseline == 'phrase':
-                    #each group is 3 consecutive words
-                    for i in range(0, len(word_list), 3):
-                        groups.append(word_list[i:i+3])
-                elif baseline == 'sentence':
-                    #reconstruct sentences from word list
-                    sentence = ""
-                    for word in word_list:
-                        sentence += word + " "
-                        if word[-1] == "." or word[-1] == "!" or word[-1] == "?":
-                            groups.append(sentence.split())
-                            sentence = ""
-                    if(len(sentence) > 0):
-                        groups.append(sentence.split())
+                groups = text_chunk(word_list, baseline)
                 # print(groups)
                 alignments = torch.tensor(metric.calculate_group_alignment(groups))
                 score = alignments.mean()
@@ -178,9 +181,9 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence']):
             # if i > 1:
             #     break
                 
-        print(baseline_scores)    
+        # print(baseline_scores)    
         baseline_scores = torch.stack(baseline_scores)
-        alignment_scores_all[baseline] = baseline_scores
+        all_baselines_scores[baseline] = baseline_scores
     
-    print(alignment_scores_all)
-    return alignment_scores_all
+    # print(all_baselines_scores)
+    return all_baselines_scores

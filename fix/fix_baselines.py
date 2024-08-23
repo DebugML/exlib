@@ -9,16 +9,16 @@ import exlib
 from exlib.datasets.cholec import get_cholec_scores
 from exlib.datasets.chestx import get_chestx_scores
 from exlib.datasets.mass_maps import get_mass_maps_scores
-# from exlib.datasets.supernova import get_supernova_scores
-# from exlib.datasets.multilingual_politeness import get_politeness_scores
-# from exlib.datasets.emotion import get_emotion_scores
+from exlib.datasets.supernova import get_supernova_scores
+from exlib.datasets.multilingual_politeness import get_politeness_scores
+from exlib.datasets.emotion import get_emotion_scores
 
 
 all_settings_baselines = {
-    'cholec': ['patch', 'quickshift', 'watershed'],
-    'chestx': ['patch', 'quickshift', 'watershed'],
-    'massmaps': ['patch', 'quickshift', 'watershed'],
-    'supernova': ['chunk'], # needs to be updated to include chunk size
+    'cholec': ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft'],
+    'chestx': ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft'],
+    'mass_maps': ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft'],
+    'supernova': ['chunk 5', 'chunk 10', 'chunk 15'], # chunk size
     'multilingual_politeness': ['word', 'phrase', 'sentence'],
     'emotion': ['word', 'phrase', 'sentence']
 }
@@ -27,9 +27,9 @@ all_settings_methods = {
     'cholec': get_cholec_scores,
     'chestx': get_chestx_scores,
     'mass_maps': get_mass_maps_scores,
-    # 'supernova': get_supernova_scores,
-    # 'multilingual_politeness': get_politeness_scores,
-    # 'emotion': get_emotion_scores
+    'supernova': get_supernova_scores,
+    'multilingual_politeness': get_politeness_scores,
+    'emotion': get_emotion_scores
 }
 
 
@@ -41,10 +41,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print('SETTING:', args.setting)
     
-    # Make output directory if doesn't exist
+    # Make output directory if does not exist
     output_dir = Path(args.results_dir, args.setting)
     output_dir.mkdir(parents=True, exist_ok=True)
-    scores_filepath = str(Path(output_dir, f"all_fix_baselines_scores.pth"))
+    scores_filepath = str(Path(output_dir, f"all_baselines_scores.pt"))
     if os.path.isfile(scores_filepath):
         print(f'{scores_filepath} already exists')
     else:
@@ -56,6 +56,13 @@ if __name__ == "__main__":
         all_baselines_scores = get_scores(baselines=baselines_list)
         # dic, where key is name of baseline (e.g. patch) and value is the baseline scores
 
-        print(all_baselines_scores)
+        # print(all_baselines_scores)
+        for name in all_baselines_scores:
+            metric = torch.tensor(all_baselines_scores[name])
+            mean_metric = metric.mean()
+            print(f'BASELINE {name} mean score: {mean_metric}')
+            
         torch.save(all_baselines_scores, scores_filepath)
+
+        
 

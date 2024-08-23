@@ -9,20 +9,30 @@ from torch.utils.data import DataLoader
 from datasets import load_dataset
 import sentence_transformers
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+import sys
+sys.path.append("../src")
+import exlib
+# Baselines
+from exlib.features.text.text_chunk import text_chunk
+from exlib.utils.politeness_helper import load_lexica
 
-DATASET_REPO = "shreyahavaldar/multilingual_politeness"
-MODEL_REPO = "shreyahavaldar/xlm-roberta-politeness"
+
+DATASET_REPO = "BrachioLab/multilingual_politeness"
+MODEL_REPO = "BrachioLab/xlm-roberta-politeness"
 TOKENIZER_REPO = "xlm-roberta-base"
+
 
 def load_data():
     hf_dataset = load_dataset(DATASET_REPO)
     return hf_dataset
 
+
 def load_model():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = XLMRobertaForSequenceClassification.from_pretrained(MODEL_REPO)
     model.to(device)
     return model
+
 
 class PolitenessDataset(torch.utils.data.Dataset):
     def __init__(self, split, language="english"):
@@ -74,8 +84,7 @@ class Metric(nn.Module):
         languages = ["english", "spanish", "chinese", "japanese"]
         lexica = {}
         for l in languages:
-            filepath = f"../src/exlib/utils/politeness_lexica/{l}_politelex.csv"
-            lexica[l] = pd.read_csv(filepath)
+            lexica[l] = load_lexica(l)
 
         # create centroids
         all_centroids = {}        
@@ -94,24 +103,12 @@ class Metric(nn.Module):
 
     # input: list of words
     def calculate_single_group_alignment(self, group:list, language:str="english"):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         #find max avg cos sim between word embeddings and centroids
         category_similarities = {}
         centroids = self.centroids[language]
-        # if len(group) > 1:
-
-        #     import pdb; pdb.set_trace()
-        #     # prev
-        #     for category, centroid_emb in centroids.items():
-        #         #calculate cosine similarity
-        #         cos_sim = []
-        #         for word in group:
-        #             word_emb = self.model.encode(word)
-        #             cos_sim.append(np.dot(word_emb, centroid_emb) / (np.linalg.norm(word_emb) * np.linalg.norm(centroid_emb)))
-        #         avg_cos_sim = np.mean(cos_sim)
-        #         category_similarities[category] = avg_cos_sim
-
-        #     group_alignment1 = max(category_similarities.values())
-        # new
+    
         word_embs = []
         for word in group:
             word_emb = self.model.encode(word)
@@ -150,6 +147,7 @@ class Metric(nn.Module):
 
 def get_politeness_scores(baselines = ['word', 'phrase', 'sentence']):
     dataset = PolitenessDataset("test")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = PolitenessClassifier()
     model.to(device)
     model.eval()
@@ -157,59 +155,32 @@ def get_politeness_scores(baselines = ['word', 'phrase', 'sentence']):
     metric = Metric()
     torch.manual_seed(1234)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
-    import time
-    alignment_scores_all = {}
+    all_baselines_scores = {}
+    
     for baseline in baselines:
         print(f"---- {baseline} Level Groups ----")
-        
         baseline_scores = []
-        for bi, batch in enumerate(tqdm(dataloader)):
+        for i, batch in enumerate(tqdm(dataloader)):
             word_lists = batch['word_list']
             word_lists = list(map(list, zip(*word_lists)))
             processed_word_lists = []
-            start = time.time()
             for word_list in word_lists:
                 processed_word_lists.append([word for word in word_list if word != ''])
-            # print('a', time.time() - start)
-            # start = time.time()
             for word_list in processed_word_lists:
                 groups = []
-                if baseline == 'word':
-                    for word in word_list:
-                        groups.append([word])
-                elif baseline == 'phrase':
-                    #each group is 3 consecutive words
-                    for i in range(0, len(word_list), 3):
-                        groups.append(word_list[i:i+3])
-                elif baseline == 'sentence':
-                    #reconstruct sentences from word list
-                    sentence = ""
-                    for word in word_list:
-                        sentence += word + " "
-                        if word[-1] == "." or word[-1] == "!" or word[-1] == "?":
-                            groups.append(sentence.split())
-                            sentence = ""
-                    if(len(sentence) > 0):
-                        groups.append(sentence.split())
-                # print('baseline', baseline, '-------')        
-                # print(groups)
-                # print('aa', time.time() - start)
-                start = time.time()
+                groups = text_chunk(word_list, baseline)
                 alignments = torch.tensor(metric.calculate_group_alignment(groups))
-                # print('aa compute align', time.time() - start)
-                start = time.time()
                 score = alignments.mean()
                 baseline_scores.append(score)
-            # if bi > 2:
+            # if i > 2:
             #     break
-            # if i % 10 == 0: #> 2:
-            #     continue #break
+    
         # print(baseline_scores)    
         baseline_scores = torch.stack(baseline_scores)
-        alignment_scores_all[baseline] = baseline_scores
+        all_baselines_scores[baseline] = baseline_scores
     
     # print(alignment_scores_all)
-    return alignment_scores_all
+    return all_baselines_scores
 
 
             
