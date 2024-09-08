@@ -61,33 +61,53 @@ def explain_image_with_intgrad(x, model, loss_fn,
 def explain_image_cls_with_intgrad(model, x, label,
                              x0 = None,
                              num_steps = 32,
-                             progress_bar = False):
+                             progress_bar = False,
+                             return_groups=False,
+                             mini_batch_size = 16):
     """
     Explain a classification model with Integrated Gradients.
     """
     assert x.size(0) == len(label)
+    if label.ndim == 1:
+        label = label.unsqueeze(1)
 
     # Default baseline is zeros
     x0 = torch.zeros_like(x) if x0 is None else x0
 
     step_size = 1 / num_steps
-    intg = torch.zeros_like(x)
+    # intg = torch.zeros_like(x)
+    # intg should have x's shape with an extra dim that has the same size as the number of classes
+    intg = torch.zeros(x.size(0), x.size(1), x.size(2), x.size(3), label.size(1), 
+                        device=x.device, dtype=x.dtype)
 
     pbar = tqdm(range(num_steps)) if progress_bar else range(num_steps)
     for k in pbar:
         ak = k * step_size
         xk = x0 + ak * (x - x0)
         xk.requires_grad_()
-        y = model(xk)
 
-        loss = 0.0
-        for i, l in enumerate(label):
-            loss += y[i, l]
+        # do the above but in minibatches
+        # import pdb; pdb.set_trace()
+        
+        for i in tqdm(range(0, label.size(1), mini_batch_size)):
+            l = label[:, i:i+mini_batch_size]
+            xk_batch = xk[:,None].expand(x.shape[0], l.shape[-1], x.shape[1], x.shape[2], x.shape[3]).clone()
+            
+            xk_batch_shape = xk_batch.shape
+            xk_batch = xk_batch.flatten(0, 1).clone().detach().requires_grad_()
+            
+            y = model(xk_batch)
+            loss = y.gather(1, l.flatten()[:,None]).view(xk_batch_shape[0], xk_batch_shape[1])
+            loss.sum().backward()
+            intg[:,:,:,:,i:i+mini_batch_size] += xk_batch.grad.view(xk_batch_shape[0], 
+                        xk_batch_shape[1], xk_batch_shape[2], 
+                        xk_batch_shape[3], xk_batch_shape[4]).permute(0, 2, 3, 4, 1) * step_size
 
-        loss.backward()
-        intg += xk.grad * step_size
+    attrs = intg
+    if attrs.ndim == 5 and attrs.size(-1) == 1:
+        attrs = attrs.squeeze(-1)
 
-    return FeatureAttrOutput(intg, {})
+    return FeatureAttrOutput(attrs, {})
 
 
 class IntGradImageCls(FeatureAttrMethod):
