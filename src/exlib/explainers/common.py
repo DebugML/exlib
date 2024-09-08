@@ -27,7 +27,16 @@ class FamWrapper(nn.Module):
         return y
 
 
+"""
+    Explainer output format:
+    - attributions: (N, C, H, W) or (N, C, H, W, T) or (N, 1, H, W) or (N, 1, H, W, T)
+    - group_masks: (N, C, H, W) or (N, C, H, W, T) or (N, 1, H, W) or (N, 1, H, W, T)
+    - group_attributions: (N, M) or (N, M, T)
+"""
 FeatureAttrOutput = namedtuple("FeatureAttrOutput", ["attributions", "explainer_output"])
+GroupFeatureAttrOutput = namedtuple("GroupFeatureAttrOutput", 
+    ["attributions", "explainer_output", "group_masks", "group_attributions"]
+    )
 
 
 class FeatureAttrMethod(nn.Module): 
@@ -37,7 +46,7 @@ class FeatureAttrMethod(nn.Module):
         super().__init__() 
         self.model = model
 
-    def forward(self, x, t, **kwargs):
+    def forward(self, x, t, return_groups=False, **kwargs):
         raise NotImplementedError()
 
 

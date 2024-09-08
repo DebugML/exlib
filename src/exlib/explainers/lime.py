@@ -25,7 +25,9 @@ def explain_image_cls_with_lime(model, x, ts,
                                 LimeImageExplainerKwargs={},
                                 # Gets FA for every label if top_labels == None
                                 explain_instance_kwargs={},
-                                get_image_and_mask_kwargs={}):
+                                get_image_and_mask_kwargs={},
+                                return_groups=False
+                                ):
     """
     Explain a pytorch model with LIME.
     this function is not intended to be called directly.
@@ -61,16 +63,48 @@ def explain_image_cls_with_lime(model, x, ts,
 
     lime_exp = explainer.explain_instance(x_np, f, labels=todo_labels, **explain_instance_kwargs)
 
-    attrs = torch.zeros_like(x).to(x.device)
-    for i, ti in enumerate(todo_labels):
-        seg_mask = torch.from_numpy(lime_exp.segments).to(x.device)
-        seg_attrs = lime_exp.local_exp[ti]
-        for seg_id, seg_attr in seg_attrs:
-            attrs += (seg_mask == seg_id) * seg_attr
+    # Initialize tensors for attributions and masks
+    seg_mask = torch.from_numpy(lime_exp.segments).to(x.device)
+    attrs_all = torch.zeros((len(todo_labels), H, W), device=x.device)
+    group_masks_all = torch.zeros((len(todo_labels), H, W), dtype=torch.long, device=x.device)
+    group_attrs_all = torch.zeros((len(todo_labels), len(seg_mask.unique())), dtype=torch.float, 
+        device=x.device)
 
-    return FeatureAttrOutput(attrs, lime_exp)
+    # Vectorized operation to handle multiple labels and segmentations
+    seg_attrs_all = [torch.tensor(lime_exp.local_exp[ti], device=x.device) for ti in todo_labels]
+
+    for i, seg_attrs in enumerate(seg_attrs_all):
+        seg_ids = seg_attrs[:, 0].long()  # Segment IDs
+        seg_values = seg_attrs[:, 1].float()  # Corresponding attribution values
+        
+        # import pdb; pdb.set_trace()
+        # Vectorized addition of attributions based on segments
+        attrs_all[i] = ((seg_mask.unsqueeze(0) == seg_ids.view(-1, 1, 1)).float() \
+            * seg_values.view(-1, 1, 1)).sum(dim=0)
+        
+        if return_groups:
+            # Assign group mask (vectorized)
+            group_masks_all[i] = torch.where(seg_mask.unsqueeze(0) == seg_ids.view(-1, 1, 1), 
+                    torch.arange(len(seg_ids)).to(x.device).view(-1, 1, 1), 
+                    group_masks_all[i]).sum(dim=0).long()
+            group_attrs_all[i] = seg_values
+
+    attrs_all = attrs_all.permute(1,2,0)[None]  # (1, H, W, N)
+    group_masks_all = group_masks_all.permute(1,2,0)[None]  # (1, H, W, N)
+    group_attrs_all = group_attrs_all.permute(1,0) # (M, N)
+
+    if return_groups:
+        return GroupFeatureAttrOutput(attrs_all, lime_exp, group_masks_all, group_attrs_all)
+    else:
+        return FeatureAttrOutput(attrs_all, lime_exp)
 
 
+"""
+    Explainer output format:
+    - attributions: (N, C, H, W) or (N, C, H, W, T) or (N, 1, H, W) or (N, 1, H, W, T)
+    - group_masks: (N, M, C, H, W) or (N, M, C, H, W, T) or (N, M, 1, H, W) or (N, M, 1, H, W, T)
+    - group_attributions: (N, M) or (N, M, T)
+"""
 class LimeImageCls(FeatureAttrMethod):
     def __init__(self, model,
                  LimeImageExplainerKwargs={},
@@ -86,25 +120,45 @@ class LimeImageCls(FeatureAttrMethod):
         self.explain_instance_kwargs = explain_instance_kwargs
         self.get_image_and_mask_kwargs = get_image_and_mask_kwargs
 
-    def forward(self, x, t):
+    def forward(self, x, t, return_groups=False):
         if not isinstance(t, torch.Tensor):
             t = torch.tensor(t)
 
         N = x.size(0)
-        assert x.ndim == 4 and t.ndim == 1 and len(t) == N
+        assert x.ndim == 4 and t.ndim in [1, 2] and len(t) == N
+        if t.ndim == 1:
+            t = t.unsqueeze(1)
 
         attrs, lime_exps = [], []
+        group_masks, group_attrs = [], []
         for i in range(N):
-            xi, ti = x[i], t[i].cpu().item()
-            out = explain_image_cls_with_lime(self.model, xi, [ti],
+            xi, ti = x[i], t[i].cpu().tolist()
+            out = explain_image_cls_with_lime(self.model, xi, ti,
                     LimeImageExplainerKwargs=self.LimeImageExplainerKwargs,
                     explain_instance_kwargs=self.explain_instance_kwargs,
-                    get_image_and_mask_kwargs=self.get_image_and_mask_kwargs)
+                    get_image_and_mask_kwargs=self.get_image_and_mask_kwargs,
+                    return_groups=return_groups)
 
             attrs.append(out.attributions)
             lime_exps.append(out.explainer_output)
+            if return_groups:
+                group_masks.append(out.group_masks)
+                group_attrs.append(out.group_attributions)
 
-        return FeatureAttrOutput(torch.stack(attrs), lime_exps)
+        attrs = torch.stack(attrs, dim=0)
+        if return_groups:
+            group_masks = torch.stack(group_masks, dim=0)
+            group_attrs = torch.stack(group_attrs, dim=0)
+        if attrs.ndim == 5 and attrs.size(-1) == 1:
+            attrs = attrs.squeeze(-1)
+            if return_groups:
+                group_masks = group_masks.squeeze(-1)
+                group_attrs = group_attrs.squeeze(-1)
+
+        if return_groups:
+            return GroupFeatureAttrOutput(attrs, lime_exps, group_masks, group_attrs)
+        else:
+            return FeatureAttrOutput(attrs, lime_exps)
 
 
 # Segmentation model
