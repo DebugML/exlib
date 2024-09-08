@@ -34,9 +34,12 @@ def explain_image_cls_with_shap(model, x, t, mask_value, shap_explainer_kwargs):
         out = explainer(np.expand_dims(xi, axis=0), outputs=ti)
         svs = torch.from_numpy(out.values) # (1,H,W,C,1)
         shap_outs.append(out)
-        shap_values.append(svs[0,:,:,:,0].permute(2,0,1)) # (C,H,W)
+        shap_values.append(svs[0].permute(2,0,1,3)) # (C,H,W)
     shap_values = torch.stack(shap_values)
-    return FeatureAttrOutput(shap_values, shap_outs)
+    attrs = shap_values
+    if attrs.ndim == 5 and attrs.size(-1) == 1:
+        attrs = attrs.squeeze(-1)
+    return FeatureAttrOutput(attrs, shap_outs)
 
 
 class ShapImageCls(FeatureAttrMethod):
