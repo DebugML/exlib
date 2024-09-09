@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from .common import *
 from .libs.archipelago.explainer import Archipelago
 from .libs.archipelago.application_utils.image_utils import *
@@ -21,7 +21,7 @@ class ArchipelagoImageCls(FeatureAttrMethod):
         self.top_k = top_k
         self.segmenter = segmenter
 
-    def forward(self, x, t, **kwargs):
+    def forward(self, x, t, verbose=0, **kwargs):
         bsz = x.shape[0]
 
         if not isinstance(t, torch.Tensor) and t is not None:
@@ -52,6 +52,7 @@ class ArchipelagoImageCls(FeatureAttrMethod):
                 segments = self.segmenter(image)
 
             xf = ImageXformer(image, baseline, segments)
+            segments = torch.tensor(segments, device=x.device)
 
             apgo = Archipelago(self.model, data_xformer=xf, output_indices=class_idx, batch_size=20)
             explanation = apgo.explain(top_k=self.top_k)
@@ -60,44 +61,54 @@ class ArchipelagoImageCls(FeatureAttrMethod):
             expln_flat_masks_i = []
             masks_i = []
             mask_weights_i = []
-            for c_i in range(len(class_idx)):
-                expln_scores = np.zeros_like(segments, dtype=float)
-                expln_flat_masks = np.zeros_like(segments, dtype=float)
+            pbar = range(len(class_idx))
+            if verbose >= 1:
+                pbar = tqdm(pbar, desc='Explaining classes')
+            for c_i in pbar:
+                expln_scores = torch.zeros_like(segments, dtype=torch.float)
+                expln_flat_masks = torch.zeros_like(segments, dtype=torch.long)
                 masks = []
-                mask_weights = []
+                
+                masks = torch.zeros(len(explanation[c_i]), *segments.shape, dtype=torch.float, device=x.device)
+                mask_weights = torch.zeros(len(explanation[c_i]), device=x.device)
 
-                for e_i, (k, v) in enumerate(sorted(explanation[c_i].items(), key=lambda item: item[1], reverse=True)):
-                    mask = np.zeros_like(segments, dtype=float)
+                for e_i, (k, v) in enumerate(sorted(explanation[c_i].items(), 
+                            key=lambda item: item[1], reverse=True)):
+                    mask = torch.zeros_like(segments, dtype=torch.float, device=x.device)
+                    v = float(v)
+                    # chose the loop version instead of using torch.isin because it's faster
                     for s_i in k:
                         expln_scores[segments == s_i] = v
                         expln_flat_masks[segments == s_i] = e_i
-                        mask[segments == s_i] = 1
-                    masks.append(mask)
-                    mask_weights.append(v)
-
-                expln_scores = torch.tensor(expln_scores).unsqueeze(0).to(x.device)
-                expln_flat_masks = torch.tensor(expln_flat_masks).unsqueeze(0).to(x.device)
-                masks = torch.tensor(masks).to(x.device)
-                mask_weights = torch.tensor(mask_weights).to(x.device)
+                        masks[e_i, segments == s_i] = 1
+                    mask_weights[e_i] = v
 
                 expln_scores_i.append(expln_scores)
                 expln_flat_masks_i.append(expln_flat_masks)
                 masks_i.append(masks)
                 mask_weights_i.append(mask_weights)
 
-            expln_scores_all.append(torch.cat(expln_scores_i, dim=0))
-            expln_flat_masks_all.append(torch.cat(expln_flat_masks_i, dim=0))
+            expln_scores_all.append(torch.stack(expln_scores_i, dim=-1))
+            expln_flat_masks_all.append(torch.stack(expln_flat_masks_i, dim=-1))
             masks_all.append(masks_i)
             mask_weights_all.append(mask_weights_i)
 
         expln_scores = torch.stack(expln_scores_all, dim=0)
         expln_flat_masks = torch.stack(expln_flat_masks_all, dim=0)
 
-        return FeatureAttrOutput(expln_scores, {
+        expln_scores = expln_scores.unsqueeze(1)
+        expln_flat_masks = expln_flat_masks.unsqueeze(1)
+
+        if expln_scores.ndim == 5 and expln_scores.size(-1) == 1:
+            expln_scores = expln_scores.squeeze(-1)
+
+        return GroupFeatureAttrOutput(expln_scores, {
             "expln_flat_masks": expln_flat_masks,
             "masks": masks_all,
             "mask_weights": mask_weights_all
-        })
+        },
+        expln_flat_masks,
+        mask_weights_all)
 
 
 class TextXformer:

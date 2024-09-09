@@ -62,8 +62,7 @@ def explain_image_cls_with_intgrad(model, x, label,
                              x0 = None,
                              num_steps = 32,
                              progress_bar = False,
-                             return_groups=False,
-                             mini_batch_size = 16):
+                             return_groups=False):
     """
     Explain a classification model with Integrated Gradients.
     """
@@ -75,12 +74,13 @@ def explain_image_cls_with_intgrad(model, x, label,
     x0 = torch.zeros_like(x) if x0 is None else x0
 
     step_size = 1 / num_steps
-    # intg = torch.zeros_like(x)
-    # intg should have x's shape with an extra dim that has the same size as the number of classes
+
     intg = torch.zeros(x.size(0), x.size(1), x.size(2), x.size(3), label.size(1), 
                         device=x.device, dtype=x.dtype)
 
     pbar = tqdm(range(num_steps)) if progress_bar else range(num_steps)
+
+    mini_batch_size = 1
     for k in pbar:
         ak = k * step_size
         xk = x0 + ak * (x - x0)
@@ -91,10 +91,10 @@ def explain_image_cls_with_intgrad(model, x, label,
         
         for i in tqdm(range(0, label.size(1), mini_batch_size)):
             l = label[:, i:i+mini_batch_size]
-            xk_batch = xk[:,None].expand(x.shape[0], l.shape[-1], x.shape[1], x.shape[2], x.shape[3]).clone()
+            xk_batch = xk[:,None].expand(x.shape[0], l.shape[-1], x.shape[1], x.shape[2], x.shape[3])
             
             xk_batch_shape = xk_batch.shape
-            xk_batch = xk_batch.flatten(0, 1).clone().detach().requires_grad_()
+            xk_batch = xk_batch.flatten(0, 1).contiguous().clone().detach().requires_grad_()
             
             y = model(xk_batch)
             loss = y.gather(1, l.flatten()[:,None]).view(xk_batch_shape[0], xk_batch_shape[1])
