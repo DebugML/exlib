@@ -5,6 +5,7 @@ from collections import namedtuple
 from .libs.xdnn.imagenet.models import AlexNet, XAlexNet, vgg16, xvgg16, fixup_resnet50, xfixup_resnet50
 from collections import OrderedDict
 import torchvision.transforms as transforms
+from ..explainers.common import get_explanations_in_minibatches
 
 
 
@@ -53,28 +54,23 @@ class XDNN(nn.Module):
                                         transforms.Normalize(mean = [ -0.485, -0.456, -0.406 ],
                                                             std = [ 1., 1., 1. ])])
 
-    def forward(self, x, t=None):
+    def forward(self, x, t=None, return_groups=False, mini_batch_size=16, **kwargs):
         with torch.enable_grad():
             images = self.normalize(x).detach()
-            # compute output
-            
 
-            images = images.to(x.device)
-            images.requires_grad = True # make sure this is set to True
-            
+            def get_attr_fn(x, t, model, normalize):
+                x = x.clone().detach().requires_grad_()
+                images = normalize(x)
+                outputs = model(images)
+                target = t
+                target = target.to(x.device)
+                target_outputs = torch.gather(outputs, 1, target.unsqueeze(-1))
+                gradients = torch.autograd.grad(torch.unbind(target_outputs), images, create_graph=False, allow_unused=True)[0]
+                attributions = gradients * images
+                print('attributions', attributions.shape)
+                print('outputs', outputs.shape)
+                return attributions, outputs
 
-            outputs = self.model(images)
-
-            if t is None:
-                t = outputs.argmax(dim=1)
-            target = t
-
-            target = target.to(x.device)
-            
-
-            # compute attribution
-            target_outputs = torch.gather(outputs, 1, target.unsqueeze(-1))
-            gradients = torch.autograd.grad(torch.unbind(target_outputs), images, create_graph=False, allow_unused=True)[0]
-            attributions = gradients * images
+            attributions, outputs = get_explanations_in_minibatches(images, t, get_attr_fn, mini_batch_size=mini_batch_size, show_pbar=False, model=self.model, normalize=self.normalize)
 
             return AttributionOutputXDNN(outputs, attributions)

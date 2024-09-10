@@ -2,12 +2,11 @@ import torch
 import torch.nn as nn
 from collections import namedtuple
 from bcos.data.transforms import AddInverse
-
+from ..explainers.common import get_explanations_in_minibatches
 
 AttributionOutputBCos = namedtuple("AttributionOutputBCos", [
     "preds",
-    "attributions", 
-    "explainer_output"
+    "attributions",
     ])
 
 
@@ -21,22 +20,22 @@ class BCos(nn.Module):
     def prepare_data(self, x):
         return AddInverse()(x)
 
-    def forward(self, x, t=None):
-        attrs = []
-        preds = []
-        for i in range(len(x)):
-            images = x[i:i+1].clone().requires_grad_()
-            in_tensor = self.prepare_data(images)
+    def forward(self, x, t=None, return_groups=False, **kwargs):
 
-            if t is None:
-                idx = None
-            else:
-                idx = t[i:i+1]
-            expln = self.model.explain(in_tensor.to(x.device), idx=idx)
-            attr = torch.tensor(expln['explanation']).permute(2,0,1)
-            attrs.append(attr)
-            preds.append(expln['prediction'])
+        def get_attr_fn(x, t, model, prepare_data):
+            x = x.clone().detach().requires_grad_()
+            in_tensor = prepare_data(x)
+            expln = model.explain(in_tensor, idx=t)
+            attrs = torch.tensor(expln['explanation'], device=x.device).permute(2,0,1)
+            # print('attrs', attrs.shape)
+            return attrs[None, :3], torch.tensor([expln['prediction']], device=x.device)
+
+        attrs, preds = get_explanations_in_minibatches(x, t, get_attr_fn, mini_batch_size=1, 
+                        show_pbar=False, model=self.model, prepare_data=self.prepare_data)
+
+        if attrs.ndim == 5 and attrs.size(-1) == 1:
+            attrs = attrs.squeeze(-1)
+
         return AttributionOutputBCos(
-            torch.tensor(preds).to(x.device),
-            torch.stack(attrs), 
-            expln)
+            preds,
+            attrs)

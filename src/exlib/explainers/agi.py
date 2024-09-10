@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from .common import *
+from tqdm.auto import tqdm
 
 class Normalize(nn.Module) :
     def __init__(self, mean, std) :
@@ -86,38 +87,50 @@ class AgiImageCls(FeatureAttrMethod):
         self.topk = topk
         self.epsilon = epsilon
 
-    def forward(self, x, t, **kwargs):
+    def forward(self, x, t, return_groups=False, verbose=1, **kwargs):
         assert len(x) == len(t)
+
+        if t.ndim == 1:
+            t = t.unsqueeze(1)
 
         attrs = []
         with torch.enable_grad():
             for i in range(len(x)):
+                attrs_i = []
+                pbar = range(t.size(1))
+                if verbose:
+                    pbar = tqdm(pbar)
+                for ti in pbar:
+                    data = pre_processing(x[i:i+1].cpu().numpy()[0].transpose(1,2,0), x.device)
+                    data = data.to(x.device)
 
-                data = pre_processing(x[i:i+1].cpu().numpy()[0].transpose(1,2,0), x.device)
-                data = data.to(x.device)
+                    output = self.model(data)
 
-                output = self.model(data)
+                    if t is None:
+                        init_pred = output.max(1, keepdim=True)[1] # get the index of the max log-probability
+                    else:
+                        init_pred = t[i:i+1, ti]
+                    num_classes = output.size(-1)
+                    selected_ids = range(0,num_classes - 1,int(num_classes/self.topk))
 
-                if t is None:
-                    init_pred = output.max(1, keepdim=True)[1] # get the index of the max log-probability
-                else:
-                    init_pred = t[i:i+1]
-                num_classes = output.size(-1)
-                selected_ids = range(0,num_classes - 1,int(num_classes/self.topk))
+                    top_ids = selected_ids # only for predefined ids
+                    # initialize the step_grad towards all target false classes
+                    step_grad = 0 
+                    # num_class = 1000 # number of total classes
+                    for l in top_ids:
 
-                top_ids = selected_ids # only for predefined ids
-                # initialize the step_grad towards all target false classes
-                step_grad = 0 
-                # num_class = 1000 # number of total classes
-                for l in top_ids:
+                        targeted = torch.tensor([l]).to(x.device) 
+                        if targeted.item() == init_pred.item():
+                            continue # we don't want to attack to the predicted class.
 
-                    targeted = torch.tensor([l]).to(x.device) 
-                    if targeted.item() == init_pred.item():
-                        continue # we don't want to attack to the predicted class.
+                        delta, perturbed_image = pgd_step(x[i:i+1], self.epsilon, self.model, 
+                                init_pred, targeted, self.max_iter)
+                        step_grad += delta
 
-                    delta, perturbed_image = pgd_step(x[i:i+1], self.epsilon, self.model, init_pred, targeted, self.max_iter)
-                    step_grad += delta
-
-                # adv_ex = step_grad.squeeze().detach().cpu().numpy() # / topk
-                attrs.append(step_grad)
-        return FeatureAttrOutput(torch.cat(attrs, 0).to(x.device), {})
+                    # adv_ex = step_grad.squeeze().detach().cpu().numpy() # / topk
+                    attrs_i.append(step_grad)
+                attrs.append(torch.stack(attrs_i, -1))
+        attrs = torch.cat(attrs, 0).to(x.device)
+        if attrs.ndim == 5 and attrs.size(-1) == 1:
+            attrs = attrs.squeeze(-1)
+        return FeatureAttrOutput(attrs, {})

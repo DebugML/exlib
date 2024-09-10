@@ -32,7 +32,8 @@ AttributionOutputSOP = namedtuple("AttributionOutputSOP",
                                    "attributions_max",
                                    "attributions_all",
                                    "flat_masks",
-                                   "grouped_attributions"])
+                                   "grouped_attributions",
+                                   "loss_scale"])
 
 
 def gaussian_kernel(size, sigma, device):
@@ -972,7 +973,8 @@ class SOPImageCls(SOPImage):
 
         return weighted_logits, output_mask_weights, logits, pooler_outputs
     
-    def get_results_tuple(self, weighted_logits, logits, pooler_outputs, input_mask_weights, output_mask_weights, bsz, label):
+    def get_results_tuple(self, weighted_logits, logits, pooler_outputs, input_mask_weights, 
+                          output_mask_weights, bsz, label):
         # todo: debug for segmentation
         masks_aggr = None
         masks_aggr_pred_cls = None
@@ -987,7 +989,7 @@ class SOPImageCls(SOPImage):
         grouped_attributions = output_mask_weights * logits # instead of just output_mask_weights
         # import pdb; pdb.set_trace()
         masks_mult_pred = input_mask_weights * grouped_attributions[range(len(predicted)),:,predicted,None,None]
-        masks_aggr_pred_cls = masks_mult_pred.sum(1)[:,None,:,:]
+        masks_aggr_pred_cls = masks_mult_pred.s-um(1)[:,None,:,:]
         max_mask_indices = grouped_attributions.max(2).values.max(1).indices
         # import pdb; pdb.set_trace()
         masks_max_pred_cls = masks_mult_pred[range(bsz),max_mask_indices]
@@ -1003,7 +1005,8 @@ class SOPImageCls(SOPImage):
                                     masks_max_pred_cls,
                                     masks_aggr,
                                     flat_masks,
-                                    grouped_attributions)
+                                    grouped_attributions,
+                                    None)
 
 
 
@@ -1183,7 +1186,8 @@ class SOPImageSeg(SOPImage):
                                     masks_max_pred_cls,
                                     masks_aggr,
                                     flat_masks,
-                                    grouped_attributions)
+                                    grouped_attributions,
+                                    None)
 
 
 def gaussian_kernel(size, sigma, device):
@@ -1228,7 +1232,6 @@ class SparseMultiHeadedAttentionBlur(nn.Module):
         # Combine projections for multiple heads into a single linear layer for efficiency
         self.input_weights = nn.Parameter(torch.Tensor(3 * embed_dim, embed_dim))
         self.output_projection = nn.Linear(embed_dim, embed_dim, bias=False)
-        self.sparsemax = Sparsemax(dim=-1)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -1243,156 +1246,6 @@ class SparseMultiHeadedAttentionBlur(nn.Module):
         batch_size = inputs.shape[0]
         start = index * self.embed_dim
         end = start + chunks * self.embed_dim
-        # import pdb; pdb.set_trace()
-        projections = F.linear(inputs, self.input_weights[start:end]).chunk(chunks, dim=-1)
-
-        output_projections = []
-        for projection in projections:
-            # transform projection to (BH x T x E)
-            output_projections.append(
-                projection.view(
-                    batch_size,
-                    -1,
-                    self.num_heads,
-                    self.projection_dim
-                ).transpose(2, 1).contiguous().view(
-                    batch_size * self.num_heads,
-                    -1,
-                    self.projection_dim
-                )
-            )
-
-        return output_projections
-
-    def attention(self, queries, keys, values):
-        ''' Scaled dot product attention with optional masks '''
-        logits = self.scale * torch.bmm(queries, keys.transpose(2, 1))
-
-        # attended = torch.bmm(F.softmax(logits, dim=-1), values)
-        # print('logits', logits.shape)
-        # import pdb; pdb.set_trace()
-        num_patches = int(math.sqrt(logits.shape[-1]))
-        bsz, num_groups, _ = logits.shape
-        logits_reshape = logits.view(bsz, num_groups, num_patches, num_patches)
-        # print('logits_reshape', logits_reshape.shape)
-        logits_reshape_blurred = gaussian_blur(logits_reshape, self.kernel_size, self.sigma)
-        # print('logits_reshape_blurred', logits_reshape_blurred.shape)
-        attn_weights = self.sparsemax(logits_reshape_blurred.flatten(-2))
-        # attn_weights_raw = self.sparsemax(logits)
-        # import matplotlib.pyplot as plt
-        # plt.figure()
-        # plt.imshow(attn_weights[0][0].view(num_patches, num_patches).cpu())
-        # plt.show()
-        # plt.figure()
-        # plt.imshow(attn_weights_raw[0][0].view(num_patches, num_patches).cpu())
-        # plt.show()
-        # import pdb; pdb.set_trace()
-        return attn_weights
-
-    def forward(self, queries, keys, values):
-        ''' Forward pass of the attention '''
-        # pylint:disable=unbalanced-tuple-unpacking
-        if same_tensor(values, keys, queries):
-            values, keys, queries = self.project(values, chunks=3)
-        elif same_tensor(values, keys):
-            values, keys = self.project(values, chunks=2)
-            queries, = self.project(queries, 2)
-        else:
-            values, = self.project(values, 0)
-            keys, = self.project(keys, 1)
-            queries, = self.project(queries, 2)
-
-        attn_weights = self.attention(queries, keys, values)
-        return attn_weights
-
-
-class GroupGenerateLayerBlur(nn.Module):
-    def __init__(self, hidden_dim, num_heads, scale=1, kernel_size=1, sigma=1):
-        super().__init__()
-        
-        self.hidden_dim = hidden_dim
-        self.num_heads = num_heads
-        self.scale = scale
-        self.kernel_size = kernel_size
-        self.sigma = sigma
-       
-        self.multihead_attns = nn.ModuleList([SparseMultiHeadedAttentionBlur(hidden_dim, 
-                                                                             scale=scale,
-                                                                             kernel_size=kernel_size,
-                                                                             sigma=sigma) \
-                                                for _ in range(num_heads)])
-
-    def forward(self, query, key_value, epoch=0):
-        """
-            Use multiheaded attention to get mask
-            Num_interpretable_heads = num_heads * seq_len
-            Input: x (bsz, seq_len, hidden_dim)
-                   if actual_x is not None, then use actual_x instead of x to compute attn_output
-            Output: attn_outputs (bsz, num_heads * seq_len, seq_len, hidden_dim)
-                    mask (bsz, num_heads, seq_len, seq_len)
-        """
-
-        if epoch == -1:
-            epoch = self.num_heads
-        
-        head_i = epoch % self.num_heads
-        if self.training:
-            attn_weights = self.multihead_attns[head_i](query, key_value, key_value)
-        else:
-            attn_weights = []
-            if epoch < self.num_heads:
-                num_heads_use = head_i + 1
-            else:
-                num_heads_use = self.num_heads
-            for head_j in range(num_heads_use):
-                attn_weights_j = self.multihead_attns[head_j](query, key_value, key_value)
-                attn_weights.append(attn_weights_j)
-            attn_weights = torch.stack(attn_weights, dim=1)
-        # import pdb; pdb.set_trace()
-        # attn_weights = 
-        return attn_weights
-
-
-# neurips
-
-class SparseMultiHeadedAttentionBlur(nn.Module):
-    ''' Implement a multi-headed attention module '''
-    def __init__(self, embed_dim, num_heads=1, scale=1, kernel_size=1, sigma=1):
-        ''' Initialize the attention module '''
-        super().__init__()
-
-        # ensure valid inputs
-        assert embed_dim % num_heads == 0, \
-            f'num_heads={num_heads} should evenly divide embed_dim={embed_dim}'
-
-        # store off the scale and input params
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.projection_dim = embed_dim // num_heads
-        self.scale = scale
-        self.kernel_size = kernel_size
-        self.sigma = sigma
-        # self.scale = self.projection_dim ** -0.5
-
-        # Combine projections for multiple heads into a single linear layer for efficiency
-        self.input_weights = nn.Parameter(torch.Tensor(3 * embed_dim, embed_dim))
-        self.output_projection = nn.Linear(embed_dim, embed_dim, bias=False)
-        # self.sparsemax = Sparsemax(dim=-1)
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        ''' Reset parameters using xavier initialization '''
-        # Initialize using Xavier
-        gain = nn.init.calculate_gain('linear')
-        nn.init.xavier_uniform_(self.input_weights, gain)
-        nn.init.xavier_uniform_(self.output_projection.weight, gain)
-
-    def project(self, inputs, index=0, chunks=1):
-        ''' Produce a linear projection using the weights '''
-        batch_size = inputs.shape[0]
-        start = index * self.embed_dim
-        end = start + chunks * self.embed_dim
-        # import pdb; pdb.set_trace()
         projections = F.linear(inputs, self.input_weights[start:end]).chunk(chunks, dim=-1)
 
         output_projections = []
@@ -1438,7 +1291,7 @@ class SparseMultiHeadedAttentionBlur(nn.Module):
             queries, = self.project(queries, 2)
 
         attn_weights = self.attention(queries, keys, values)
-        return attn_weights
+        return attn_weight
 
 
 class GroupGenerateLayerBlur(nn.Module):
@@ -1483,8 +1336,7 @@ class GroupGenerateLayerBlur(nn.Module):
                 attn_weights_j = self.multihead_attns[head_j](query, key_value, key_value)
                 attn_weights.append(attn_weights_j)
             attn_weights = torch.stack(attn_weights, dim=1)
-        # import pdb; pdb.set_trace()
-        # attn_weights = 
+        
         return attn_weights
 
 class GroupSelectLayerPower(nn.Module):
@@ -1515,6 +1367,7 @@ class GroupSelectLayerPower(nn.Module):
             # query = self.proj(query) # query is the class weights, which doesn't need to use the last layer to encode. maybe it can be encoded with other ways
             # print('key a', key.shape)
             key = self.proj(key)[0]
+            # need to be used with changed hidden state output from backbone model
             # print('key b', key.shape)
             
         epsilon = 1e-30
@@ -1585,7 +1438,9 @@ class SOPImageCls4(SOPImageCls):
                 mask_batch_size=16,
                 label=None,
                 return_tuple=False,
-                binary_threshold=-1):
+                binary_threshold=-1,
+                separate_scale=False,
+                ):
         if epoch == -1:
             epoch = self.num_heads
         bsz, num_channel, img_dim1, img_dim2 = inputs.shape
@@ -1598,14 +1453,23 @@ class SOPImageCls4(SOPImageCls):
 
         # Backbone model
         logits, pooler_outputs = self.run_backbone(grouped_inputs, mask_batch_size)
-        if c is not None:
+        # print('logits', logits.shape, 'c', c.shape)
+        if c is not None and not separate_scale:
             logits = logits * c[:,:,None,None]
 
         # Mask (Group) selection & aggregation
         weighted_logits, output_mask_weights, logits, pooler_outputs = self.group_select(logits, pooler_outputs, img_dim1, img_dim2)
         
         if return_tuple:
-            return self.get_results_tuple(weighted_logits, logits, pooler_outputs, input_mask_weights, output_mask_weights, bsz, label)
+            return self.get_results_tuple(
+                weighted_logits, 
+                logits, 
+                pooler_outputs, 
+                input_mask_weights, 
+                output_mask_weights, 
+                bsz, 
+                label,
+                c)
         else:
             return weighted_logits
     
@@ -1613,7 +1477,6 @@ class SOPImageCls4(SOPImageCls):
         bsz, num_channel, img_dim1, img_dim2 = inputs.shape
         c = None
         if segs is None:   # should be renamed "segments"
-            num_patch = 14
             projected_inputs = self.projection(inputs)
             num_patches = projected_inputs.shape[-2:]
             projected_inputs = projected_inputs.flatten(2).transpose(1, 2)  # bsz, img_dim1 * img_dim2, num_channel
@@ -1636,26 +1499,13 @@ class SOPImageCls4(SOPImageCls):
             neg = input_mask_weights_sort_values[:,topk:]
             c = pos.sum(-1) - neg.sum(-1)
             c = c.view(bsz, -1)
-
             masks_all = torch.zeros_like(input_mask_weights_cand)
             masks_all[torch.arange(masks_all.size(0)).unsqueeze(1), input_mask_weights_sort_indices[:, :topk]] = 1
             masks_all = masks_all.view(bsz, -1, *num_patches)
             masks_all = torch.nn.functional.interpolate(masks_all, size=(img_dim1, img_dim2), mode='nearest')
             input_mask_weights_cand = masks_all
         else:
-            # With/without masks are a bit different. Should we make them the same? Need to experiment.
-            bsz, num_segs, img_dim1, img_dim2 = segs.shape
-            seged_output_0 = inputs.unsqueeze(1) * segs.unsqueeze(2) # (bsz, num_masks, num_channel, img_dim1, img_dim2)
-            _, interm_outputs = self.run_backbone(seged_output_0, mask_batch_size)
-            
-            interm_outputs = interm_outputs.view(bsz, -1, self.hidden_size)
-            interm_outputs = interm_outputs * self.projected_input_scale
-            segment_mask_weights = self.input_attn(interm_outputs, interm_outputs, epoch=epoch)
-            segment_mask_weights = segment_mask_weights.reshape(bsz, -1, num_segs)
-            
-            new_masks =  segs.unsqueeze(1) * segment_mask_weights.unsqueeze(-1).unsqueeze(-1)
-            input_mask_weights_cand = new_masks.sum(2)  # if one mask has it, then have it
-            
+            raise NotImplementedError
             
         scale_factor = 1.0 / input_mask_weights_cand.reshape(bsz, -1, 
                                                         img_dim1 * img_dim2).max(dim=-1).values
@@ -1673,6 +1523,42 @@ class SOPImageCls4(SOPImageCls):
 
         masked_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2)
         return masked_inputs, input_mask_weights, c
+
+    def get_results_tuple(self, weighted_logits, logits, pooler_outputs, input_mask_weights, 
+                          output_mask_weights, bsz, label, c):
+        # todo: debug for segmentation
+        masks_aggr = None
+        masks_aggr_pred_cls = None
+        masks_max_pred_cls = None
+        flat_masks = None
+
+        if label is not None:
+            predicted = label  # allow labels to be different
+        else:
+            _, predicted = torch.max(weighted_logits.data, -1)
+        
+        grouped_attributions = output_mask_weights * logits # instead of just output_mask_weights
+        # import pdb; pdb.set_trace()
+        masks_mult_pred = input_mask_weights * grouped_attributions[range(len(predicted)),:,predicted,None,None]
+        masks_aggr_pred_cls = masks_mult_pred.sum(1)[:,None,:,:]
+        max_mask_indices = grouped_attributions.max(2).values.max(1).indices
+        # import pdb; pdb.set_trace()
+        masks_max_pred_cls = masks_mult_pred[range(bsz),max_mask_indices]
+
+        flat_masks = compress_masks_image(input_mask_weights, grouped_attributions[:,:,predicted])
+        
+        return AttributionOutputSOP(weighted_logits,
+                                    logits,
+                                    pooler_outputs,
+                                    input_mask_weights,
+                                    output_mask_weights,
+                                    masks_aggr_pred_cls,
+                                    masks_max_pred_cls,
+                                    masks_aggr,
+                                    flat_masks,
+                                    grouped_attributions,
+                                    c)
+    
 
 
 class SOPText(SOP):
@@ -1906,4 +1792,5 @@ class SOPTextCls(SOPText):
                                     masks_max_pred_cls,
                                     masks_aggr,
                                     flat_masks,
-                                    grouped_attributions)
+                                    grouped_attributions,
+                                    None)

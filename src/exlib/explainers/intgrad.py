@@ -62,7 +62,8 @@ def explain_image_cls_with_intgrad(model, x, label,
                              x0 = None,
                              num_steps = 32,
                              progress_bar = False,
-                             return_groups=False):
+                             return_groups=False,
+                             mini_batch_size=16):
     """
     Explain a classification model with Integrated Gradients.
     """
@@ -75,33 +76,28 @@ def explain_image_cls_with_intgrad(model, x, label,
 
     step_size = 1 / num_steps
 
+    def get_attr_fn(x, t, model, step_size):
+        x = x.clone().detach().requires_grad_()
+        y = model(x)
+        loss = y.gather(1, t[:,None])
+        print('loss', loss.shape)
+        loss.sum().backward()
+        return x.grad * step_size
+
     intg = torch.zeros(x.size(0), x.size(1), x.size(2), x.size(3), label.size(1), 
                         device=x.device, dtype=x.dtype)
 
     pbar = tqdm(range(num_steps)) if progress_bar else range(num_steps)
 
-    mini_batch_size = 1
     for k in pbar:
         ak = k * step_size
         xk = x0 + ak * (x - x0)
         xk.requires_grad_()
 
-        # do the above but in minibatches
-        # import pdb; pdb.set_trace()
-        
-        for i in tqdm(range(0, label.size(1), mini_batch_size)):
-            l = label[:, i:i+mini_batch_size]
-            xk_batch = xk[:,None].expand(x.shape[0], l.shape[-1], x.shape[1], x.shape[2], x.shape[3])
-            
-            xk_batch_shape = xk_batch.shape
-            xk_batch = xk_batch.flatten(0, 1).contiguous().clone().detach().requires_grad_()
-            
-            y = model(xk_batch)
-            loss = y.gather(1, l.flatten()[:,None]).view(xk_batch_shape[0], xk_batch_shape[1])
-            loss.sum().backward()
-            intg[:,:,:,:,i:i+mini_batch_size] += xk_batch.grad.view(xk_batch_shape[0], 
-                        xk_batch_shape[1], xk_batch_shape[2], 
-                        xk_batch_shape[3], xk_batch_shape[4]).permute(0, 2, 3, 4, 1) * step_size
+        attr_curr, _ = get_explanations_in_minibatches(xk, label, get_attr_fn, mini_batch_size, 
+                show_pbar=progress_bar, model=model, step_size=step_size)
+        # print('attr_curr', attr_curr.shape)
+        intg += attr_curr
 
     attrs = intg
     if attrs.ndim == 5 and attrs.size(-1) == 1:

@@ -16,20 +16,14 @@ def explain_image_cls_with_fullgrad(fullgrad, x, label, model_type='vit'):
         label = label.unsqueeze(1)
 
     # Obtain saliency maps
-    attrs = []
-    for i in range(x.size(0)):
-        attrs_curr = []
-        for l in tqdm(label[i]):
-            saliency_map = fullgrad.saliency(x[i:i+1], l)
-            # import pdb; pdb.set_trace()
-            attrs_curr.append(saliency_map)
-        attrs_curr = torch.stack(attrs_curr, dim=-1)
-        attrs.append(attrs_curr)
-    attrs = torch.cat(attrs, dim=0)
-    # saliency_map = fullgrad.saliency(x, label)
-    # import pdb; pdb.set_trace()
+    def get_attr_fn(x, t, fullgrad):
+        x = x.clone().detach().requires_grad_()
+        return fullgrad.saliency(x, t)
 
-    return FeatureAttrOutput(saliency_map, {})
+    attrs, _ = get_explanations_in_minibatches(x, label, get_attr_fn, mini_batch_size=16, show_pbar=False,
+        fullgrad=fullgrad)
+
+    return FeatureAttrOutput(attrs, {})
 
 
 class FullGradImageCls(FeatureAttrMethod):

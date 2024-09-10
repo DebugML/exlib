@@ -49,51 +49,25 @@ class GradCAMImageCls(FeatureAttrMethod):
         label = t
         if label.ndim == 1:
             label = label.unsqueeze(1)
-        grad_cam_results = []
-        # print('label', label.shape)
 
-        for li in tqdm(range(label.size(1))): # for each label, but do batch together
-            with torch.enable_grad():
-                grad_cam_result = self.grad_cam(input_tensor=X, 
-                                                targets=[target_func(l) for l in label[:, li]])
-                grad_cam_result = torch.tensor(grad_cam_result)
-                grad_cam_results.append(grad_cam_result)
-        grad_cam_results = torch.stack(grad_cam_results, dim=-1)[:,None]
+        def get_attr_fn(x, t, gradcam, target_func):
+            x = x.clone().detach().requires_grad_()
+            if t.ndim == 1:
+                t = t.unsqueeze(1)
+            results = torch.tensor(gradcam(input_tensor=x, targets=[target_func(tt) for tt in t]), device=x.device)
+            return results[:,None]
+            # return torch.tensor(model(x, target_func=t), device=x.device)
 
-        # grad_cam_results1 = grad_cam_results.clone()
+        with torch.enable_grad():
+            grad_cam_results, _ = get_explanations_in_minibatches(X, label, get_attr_fn, mini_batch_size,
+                gradcam=self.grad_cam, target_func=target_func)
 
-        # # return FeatureAttrOutput(grad_cam_results, grad_cam_result)
+        attrs = grad_cam_results
 
-        # bsz, num_channels, H, W = X.size()
-        # grad_cam_results = []
+        if attrs.ndim == 5 and attrs.size(-1) == 1:
+            attrs = attrs.squeeze(-1)
 
-        # # it's different when computed together.
-        # for i in range(len(label)):
-        #     with torch.enable_grad():
-        #         # import pdb; pdb.set_trace()
-        #         grad_cam_results_curr = []
-        #         for j in tqdm(range(0, label.size(1), mini_batch_size)):
-        #             l = label[i,j:j+mini_batch_size]
-
-        #             Xj = X[i:i+1].expand(len(l), 
-        #                                     num_channels,
-        #                                 H, 
-        #                                 W).clone().detach()
-        #             Xj.requires_grad_()
-        #             grad_cam_result = self.grad_cam(input_tensor=Xj,
-        #                                             targets=[target_func(ll[None]) for ll in l])  
-        #             grad_cam_result = torch.tensor(grad_cam_result)
-        #             grad_cam_results_curr.append(grad_cam_result)
-        #         grad_cam_results_curr = torch.cat(grad_cam_results_curr, 
-        #                 dim=0).permute(1, 2, 0)[None]
-        #         grad_cam_results.append(grad_cam_results_curr)
-        # grad_cam_results = torch.stack(grad_cam_results)
-
-        # print((grad_cam_results1 == grad_cam_results).all())
-        # import pdb; pdb.set_trace()
-
-
-        return FeatureAttrOutput(grad_cam_results, grad_cam_result)
+        return FeatureAttrOutput(attrs, attrs)
     
 
 class GradCAMTextCls(FeatureAttrMethod):
