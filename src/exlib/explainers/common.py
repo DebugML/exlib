@@ -189,3 +189,31 @@ def get_explanations_in_minibatches(x, t, get_attr_fn, mini_batch_size, show_pba
         attrs = attrs[:,0:1]
 
     return attrs, preds
+
+
+def get_binary_masks(h, p, n):
+    """
+    h: height of the image 224
+    p: patch size 33
+    n: number of patches in one direction 24
+    """
+    # Calculate s and m
+    # Calculate s in terms of n and p and h
+    s = (h - p + 1) // n
+    # n = (h - p + 1) // s
+    m = n * n
+
+    # Create a grid of offsets
+    y_offsets = torch.arange(0, n * s, s).repeat_interleave(n)
+    x_offsets = torch.arange(0, n * s, s).repeat(n)
+
+    # Create the binary tensor
+    binary_tensor = torch.zeros(m, h, h)
+
+    # Create indices for all patches at once
+    for i in range(m):
+        y_start = y_offsets[i]
+        x_start = x_offsets[i]
+        binary_tensor[i, y_start:y_start+p, x_start:x_start+p] = 1
+
+    return binary_tensor

@@ -67,8 +67,8 @@ class XDNN(nn.Module):
                 target_outputs = torch.gather(outputs, 1, target.unsqueeze(-1))
                 gradients = torch.autograd.grad(torch.unbind(target_outputs), images, create_graph=False, allow_unused=True)[0]
                 attributions = gradients * images
-                print('attributions', attributions.shape)
-                print('outputs', outputs.shape)
+                # print('attributions', attributions.shape)
+                # print('outputs', outputs.shape)
                 return attributions, outputs
 
             attributions, outputs = get_explanations_in_minibatches(images, t, get_attr_fn, mini_batch_size=mini_batch_size, show_pbar=False, model=self.model, normalize=self.normalize)

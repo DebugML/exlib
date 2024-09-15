@@ -73,7 +73,7 @@ class RiseImageCls(FeatureAttrMethod):
             p = p.view(N, B, CL)
             sal = torch.matmul(p.permute(1, 2, 0), self.masks.view(N, H * W))
             sal = sal.view(B, CL, H, W)
-        attrs = sal[range(B), label][:,None]
+        attrs = sal[torch.arange(B)[:,None], label][:,None]
         
         attrs = attrs.permute(0, 1, 3, 4, 2)
         if attrs.ndim == 5 and attrs.size(-1) == 1:

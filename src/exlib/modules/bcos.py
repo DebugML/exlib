@@ -22,6 +22,8 @@ class BCos(nn.Module):
 
     def forward(self, x, t=None, return_groups=False, **kwargs):
 
+        x = (x + 1) / 2
+
         def get_attr_fn(x, t, model, prepare_data):
             x = x.clone().detach().requires_grad_()
             in_tensor = prepare_data(x)

@@ -17,7 +17,8 @@ class ArchipelagoImageCls(FeatureAttrMethod):
     def __init__(self, model, top_k=5, segmenter='quickshift'):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model_wrapper = ModelWrapperTorch(model, device)
-        super().__init__(model_wrapper)
+        super().__init__(model)
+        self.model_wrapper = model_wrapper
         self.top_k = top_k
         self.segmenter = segmenter
 
@@ -35,7 +36,7 @@ class ArchipelagoImageCls(FeatureAttrMethod):
             image = x[i].cpu().permute(1,2,0).numpy()
             ti = t[i] if t is not None else None
             if ti is None:
-                predictions = self.model(np.expand_dims(image,0))
+                predictions = self.model_wrapper(np.expand_dims(image,0))
                 class_idx = predictions[0].argsort()[::-1][0]
             else:
                 if len(t[i].shape) == 0 or len(t[i].shape) == 1 and t[i].shape[0] == 1:
@@ -54,7 +55,7 @@ class ArchipelagoImageCls(FeatureAttrMethod):
             xf = ImageXformer(image, baseline, segments)
             segments = torch.tensor(segments, device=x.device)
 
-            apgo = Archipelago(self.model, data_xformer=xf, output_indices=class_idx, batch_size=20)
+            apgo = Archipelago(self.model_wrapper, data_xformer=xf, output_indices=class_idx, batch_size=20)
             explanation = apgo.explain(top_k=self.top_k)
 
             expln_scores_i = []
@@ -163,7 +164,8 @@ class ArchipelagoTextCls(FeatureAttrMethod):
     def __init__(self, model, top_k=5):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model_wrapper = BertWrapperTorch(model, device)
-        super().__init__(model_wrapper)
+        super().__init__(model)
+        self.model_wrapper = model_wrapper
         self.top_k = top_k
 
     def forward(self, x, t, **kwargs):
@@ -184,7 +186,7 @@ class ArchipelagoTextCls(FeatureAttrMethod):
                 x_i = x[i]
                 kwargs_i = {k: v[i] for k, v in kwargs.items()}
             if t is None:
-                predictions = self.model(np.expand_dims(x_i,0))
+                predictions = self.model_wrapper(np.expand_dims(x_i,0))
                 class_idx = predictions[0].argsort()[::-1][0]
             else:
                 class_idx = t[i].cpu().item()
@@ -193,7 +195,7 @@ class ArchipelagoTextCls(FeatureAttrMethod):
             baseline = np.zeros_like(inputs_np)
 
             xf = TextXformer(inputs_np, baseline)
-            apgo = Archipelago(self.model, data_xformer=xf, output_indices=class_idx, batch_size=20)
+            apgo = Archipelago(self.model_wrapper, data_xformer=xf, output_indices=class_idx, batch_size=20)
             explanation = apgo.explain(top_k=self.top_k)
 
             mask_weights = []

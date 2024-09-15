@@ -80,7 +80,7 @@ def explain_image_cls_with_intgrad(model, x, label,
         x = x.clone().detach().requires_grad_()
         y = model(x)
         loss = y.gather(1, t[:,None])
-        print('loss', loss.shape)
+        # print('loss', loss.shape)
         loss.sum().backward()
         return x.grad * step_size
 

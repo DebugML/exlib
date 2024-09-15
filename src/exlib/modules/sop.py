@@ -32,7 +32,7 @@ AttributionOutputSOP = namedtuple("AttributionOutputSOP",
                                    "attributions_max",
                                    "attributions_all",
                                    "flat_masks",
-                                   "grouped_attributions",
+                                   "group_attributions",
                                    "loss_scale"])
 
 
@@ -989,7 +989,7 @@ class SOPImageCls(SOPImage):
         grouped_attributions = output_mask_weights * logits # instead of just output_mask_weights
         # import pdb; pdb.set_trace()
         masks_mult_pred = input_mask_weights * grouped_attributions[range(len(predicted)),:,predicted,None,None]
-        masks_aggr_pred_cls = masks_mult_pred.s-um(1)[:,None,:,:]
+        masks_aggr_pred_cls = masks_mult_pred.sum(1)[:,None,:,:]
         max_mask_indices = grouped_attributions.max(2).values.max(1).indices
         # import pdb; pdb.set_trace()
         masks_max_pred_cls = masks_mult_pred[range(bsz),max_mask_indices]

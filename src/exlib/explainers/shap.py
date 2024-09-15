@@ -32,7 +32,7 @@ def explain_image_cls_with_shap(model, x, t, mask_value, shap_explainer_kwargs):
             if isinstance(ti, int):
                 ti = [ti]
         out = explainer(np.expand_dims(xi, axis=0), outputs=ti)
-        svs = torch.from_numpy(out.values) # (1,H,W,C,1)
+        svs = torch.from_numpy(out.values).to(x.device) # (1,H,W,C,1)
         shap_outs.append(out)
         shap_values.append(svs[0].permute(2,0,1,3)) # (C,H,W)
     shap_values = torch.stack(shap_values)
