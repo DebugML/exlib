@@ -23,7 +23,7 @@ class CraftGroups(nn.Module):
         self.number_of_concepts = number_of_concepts
         self.batch_size = batch_size
 
-    @torch.no_grad
+    @torch.no_grad()
     def forward(self, x: torch.FloatTensor):
         N, C, H, W = x.shape
         

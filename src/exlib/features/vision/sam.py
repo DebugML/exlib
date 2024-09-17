@@ -56,7 +56,7 @@ class SamGroups(nn.Module):
                 shutil.copyfileobj(r.raw, f)
         print('Done downloading model.')
 
-    @torch.no_grad
+    @torch.no_grad()
     def forward(self, x):
         # x: (N,C,H,W)
         all_segs = []

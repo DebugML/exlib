@@ -112,7 +112,7 @@ class NeuralQuickshiftGroups(nn.Module):
         else:
             self.feature_extractor = feature_extractor
 
-    @torch.no_grad
+    @torch.no_grad()
     def go(self, image):
         device = image.device
         C, H, W = image.shape
@@ -147,7 +147,7 @@ class NeuralQuickshiftGroups(nn.Module):
         segs = relabel_segments_by_proximity(segs)
         return regrouped_segs.long()
 
-    @torch.no_grad
+    @torch.no_grad()
     def forward(self, x):
         all_segs = torch.stack([self.go(image) for image in x])
         

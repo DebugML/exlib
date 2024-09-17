@@ -311,6 +311,9 @@ def get_mass_maps_scores(
                     baseline = NeuralQuickshiftGroups(max_groups=25)
                 elif baseline_name == 'craft':
                     baseline = CraftGroups(max_groups=25)
+                elif baseline_name == 'archipelago':
+                    baseline = ArchipelagoGroups(feature_extractor=model, max_groups=25, 
+                        quickshift_kwargs={'kernel_size': 5, 'max_dist': 10, 'ratio': 1.0, 'sigma': 0.2})
                 else:
                     raise Exception("Please indicate a valid baseline")
 

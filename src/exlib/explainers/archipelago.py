@@ -22,7 +22,7 @@ class ArchipelagoImageCls(FeatureAttrMethod):
         self.top_k = top_k
         self.segmenter = segmenter
 
-    def forward(self, x, t, verbose=0, **kwargs):
+    def forward(self, x, t=None, verbose=0, **kwargs):
         bsz = x.shape[0]
 
         if not isinstance(t, torch.Tensor) and t is not None:
@@ -37,7 +37,7 @@ class ArchipelagoImageCls(FeatureAttrMethod):
             ti = t[i] if t is not None else None
             if ti is None:
                 predictions = self.model_wrapper(np.expand_dims(image,0))
-                class_idx = predictions[0].argsort()[::-1][0]
+                class_idx = [predictions[0].argsort()[::-1][0]]
             else:
                 if len(t[i].shape) == 0 or len(t[i].shape) == 1 and t[i].shape[0] == 1:
                     class_idx = [t[i].cpu().item()]
@@ -54,7 +54,9 @@ class ArchipelagoImageCls(FeatureAttrMethod):
 
             xf = ImageXformer(image, baseline, segments)
             segments = torch.tensor(segments, device=x.device)
+            # print('segments.unique()', segments.unique())
 
+            # print(class_idx)
             apgo = Archipelago(self.model_wrapper, data_xformer=xf, output_indices=class_idx, batch_size=20)
             explanation = apgo.explain(top_k=self.top_k)
 
@@ -93,6 +95,7 @@ class ArchipelagoImageCls(FeatureAttrMethod):
             expln_flat_masks_all.append(torch.stack(expln_flat_masks_i, dim=-1))
             masks_all.append(masks_i)
             mask_weights_all.append(mask_weights_i)
+            # print('torch.stack(expln_flat_masks_i, dim=-1)', torch.stack(expln_flat_masks_i, dim=-1).unique())
 
         expln_scores = torch.stack(expln_scores_all, dim=0)
         expln_flat_masks = torch.stack(expln_flat_masks_all, dim=0)
@@ -102,6 +105,7 @@ class ArchipelagoImageCls(FeatureAttrMethod):
 
         if expln_scores.ndim == 5 and expln_scores.size(-1) == 1:
             expln_scores = expln_scores.squeeze(-1)
+            expln_flat_masks = expln_flat_masks.squeeze(-1)
 
         return GroupFeatureAttrOutput(expln_scores, {
             "expln_flat_masks": expln_flat_masks,
