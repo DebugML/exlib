@@ -17,23 +17,21 @@ class BCos(nn.Module):
 
         self.model = torch.hub.load('B-cos/B-cos-v2', model_name, pretrained=True)
 
-    def prepare_data(self, x):
+    def preprocess(self, x):
+        x = (x + 1) / 2
         return AddInverse()(x)
 
     def forward(self, x, t=None, return_groups=False, **kwargs):
-
-        x = (x + 1) / 2
-
-        def get_attr_fn(x, t, model, prepare_data):
+        def get_attr_fn(x, t, model, preprocess):
             x = x.clone().detach().requires_grad_()
-            in_tensor = prepare_data(x)
+            in_tensor = preprocess(x)
             expln = model.explain(in_tensor, idx=t)
             attrs = torch.tensor(expln['explanation'], device=x.device).permute(2,0,1)
             # print('attrs', attrs.shape)
             return attrs[None, :3], torch.tensor([expln['prediction']], device=x.device)
 
         attrs, preds = get_explanations_in_minibatches(x, t, get_attr_fn, mini_batch_size=1, 
-                        show_pbar=False, model=self.model, prepare_data=self.prepare_data)
+                        show_pbar=False, model=self.model, prepare_data=self.preprocess)
 
         if attrs.ndim == 5 and attrs.size(-1) == 1:
             attrs = attrs.squeeze(-1)

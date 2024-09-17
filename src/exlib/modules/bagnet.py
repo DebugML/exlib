@@ -38,12 +38,13 @@ class BagNet(nn.Module):
         else:
             self.patchsize = patchsize
 
-        self.normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                            std=[0.229, 0.224, 0.225])
+    def normalize(self, x):
+        x_norm = (x + 1)/2
+        x_norm -= torch.tensor([0.485, 0.456, 0.406])[:, None, None].to(x.device)
+        x_norm /= torch.tensor([0.229, 0.224, 0.225])[:, None, None].to(x.device)
+        return x_norm
 
     def forward(self, x, t=None, return_groups=True, mini_batch_size=16, **kwargs):
-        
-
         x = x.clone().detach().requires_grad_()
         x_norm = self.normalize(x)
 

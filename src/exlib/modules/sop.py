@@ -1291,7 +1291,7 @@ class SparseMultiHeadedAttentionBlur(nn.Module):
             queries, = self.project(queries, 2)
 
         attn_weights = self.attention(queries, keys, values)
-        return attn_weight
+        return attn_weights
 
 
 class GroupGenerateLayerBlur(nn.Module):
@@ -1440,6 +1440,7 @@ class SOPImageCls4(SOPImageCls):
                 return_tuple=False,
                 binary_threshold=-1,
                 separate_scale=False,
+                deletion=False
                 ):
         if epoch == -1:
             epoch = self.num_heads
@@ -1447,7 +1448,7 @@ class SOPImageCls4(SOPImageCls):
         
         # Mask (Group) generation
         if input_mask_weights is None:
-            grouped_inputs, input_mask_weights, c = self.group_generate(inputs, epoch, mask_batch_size, segs, binary_threshold)
+            grouped_inputs, input_mask_weights, c = self.group_generate(inputs, epoch, mask_batch_size, segs, binary_threshold, deletion)
         else:
             grouped_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2) # directly apply mask
 
@@ -1473,7 +1474,7 @@ class SOPImageCls4(SOPImageCls):
         else:
             return weighted_logits
     
-    def group_generate(self, inputs, epoch, mask_batch_size, segs=None, binary_threshold=-1):
+    def group_generate(self, inputs, epoch, mask_batch_size, segs=None, binary_threshold=-1, deletion=False):
         bsz, num_channel, img_dim1, img_dim2 = inputs.shape
         c = None
         if segs is None:   # should be renamed "segments"
@@ -1490,8 +1491,11 @@ class SOPImageCls4(SOPImageCls):
             
             input_mask_weights_cand = input_mask_weights_cand.reshape(-1, num_patches[0]*num_patches[1])
             input_mask_weights_sort = input_mask_weights_cand.sort(-1)
-            input_mask_weights_sort_values = input_mask_weights_sort.values.flip(-1)
-            input_mask_weights_sort_indices = input_mask_weights_sort.indices.flip(-1)
+            input_mask_weights_sort_values = input_mask_weights_sort.values #.flip(-1)
+            input_mask_weights_sort_indices = input_mask_weights_sort.indices #.flip(-1)
+            if not deletion:
+                input_mask_weights_sort_values = input_mask_weights_sort_values.flip(-1)
+                input_mask_weights_sort_indices = input_mask_weights_sort_indices.flip(-1)
 
             # get k scale
             topk = int(input_mask_weights_sort_values.shape[-1] * self.k)
