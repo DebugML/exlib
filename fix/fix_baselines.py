@@ -18,7 +18,7 @@ all_settings_baselines = {
     'cholec': ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
     'chestx': ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
     'mass_maps': ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
-    'supernova': ['chunk 5', 'chunk 10', 'chunk 15'], # chunk size
+    'supernova': ['identity', 'random', 'slice 5', 'slice 10', 'slice 15', 'clustering', 'archipelago'],
     'multilingual_politeness': ['word', 'phrase', 'sentence'],
     'emotion': ['word', 'phrase', 'sentence']
 }
