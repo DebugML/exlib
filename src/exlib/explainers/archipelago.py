@@ -163,13 +163,12 @@ class BertWrapperTorch:
 
 
 class ArchipelagoTextCls(FeatureAttrMethod):
-    """ Image classification with integrated gradients
+    """ Text classification with integrated gradients
     """
     def __init__(self, model, top_k=5):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model_wrapper = BertWrapperTorch(model, device)
-        super().__init__(model)
-        self.model_wrapper = model_wrapper
+        super().__init__(model_wrapper)
         self.top_k = top_k
 
     def forward(self, x, t, **kwargs):
@@ -185,12 +184,14 @@ class ArchipelagoTextCls(FeatureAttrMethod):
             if 'attention_mask' in kwargs:
                 text_len = kwargs['attention_mask'][i].sum()
                 x_i = x[i][:text_len]
+                for k, v in kwargs.items():
+                    print(k, v)
                 kwargs_i = {k: v[i][:text_len] for k, v in kwargs.items()}
             else:
                 x_i = x[i]
                 kwargs_i = {k: v[i] for k, v in kwargs.items()}
             if t is None:
-                predictions = self.model_wrapper(np.expand_dims(x_i,0))
+                predictions = self.model(np.expand_dims(x_i,0))
                 class_idx = predictions[0].argsort()[::-1][0]
             else:
                 class_idx = t[i].cpu().item()
@@ -199,7 +200,7 @@ class ArchipelagoTextCls(FeatureAttrMethod):
             baseline = np.zeros_like(inputs_np)
 
             xf = TextXformer(inputs_np, baseline)
-            apgo = Archipelago(self.model_wrapper, data_xformer=xf, output_indices=class_idx, batch_size=20)
+            apgo = Archipelago(self.model, data_xformer=xf, output_indices=class_idx, batch_size=20)
             explanation = apgo.explain(top_k=self.top_k)
 
             mask_weights = []
