@@ -12,7 +12,10 @@ from typing import Optional, Union, List
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm.auto import tqdm
-from exlib.features.time_series.chunk import BaselineGroups
+# Baselines
+from exlib.features.time_series.identity import IdentityGroups
+from exlib.features.time_series.random import RandomGroups
+from exlib.features.time_series.slice import SliceGroups
 from datasets import load_dataset
 import torch
 import yaml
@@ -109,7 +112,7 @@ class SupernovaFIXScores(nn.Module):
         return (scores_per_feature.sum(1)/torch.clamp(groups.sum(1), min=1e-5)).mean(dim=1)
 
 def get_supernova_scores(
-    baselines = ['chunk 5', 'chunk 10', 'chunk 15'],
+    baselines = ['identity', 'random', '5', '10', '15', 'clustering', 'archipelago'],
     dataset = SupernovaDataset(data_dir = "BrachioLab/supernova-timeseries", split="test"),
     SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = torch.Tensor([])),
     batch_size = 5,
@@ -118,39 +121,94 @@ def get_supernova_scores(
     dataset=dataset,
     batch_size=5,
     compute_loss=True
-    )
+)
+    fix_score_all_i = 0
+    fix_score_all_r = 0
+    fix_score_all_a = 0
+    fix_score_all_b = 0
+    fix_score_all_c = 0
+    fix_score_all_cluster = 0
+    fix_score_all_arc = 0
+    
+    elements_all_i = 0
+    elements_all_r = 0
+    elements_all_a = 0
+    elements_all_b = 0
+    elements_all_c = 0
+    elements_all_cluster = 0
+    elements_all_arc = 0
     
     all_baselines_scores = {}
     with torch.no_grad():
         for bi, batch in tqdm(enumerate(test_dataloader), total=len(test_dataloader)):
             for baseline in baselines:
-                if baseline == 'chunk 5':
-                    BaselineGroup = BaselineGroups(ngroups=5, window_size=100)
-                elif baseline == 'chunk 10':
-                    BaselineGroup = BaselineGroups(ngroups=10, window_size=100)
-                elif baseline == 'chunk 15':
-                    BaselineGroup = BaselineGroups(ngroups=15, window_size=100)
-                else:
-                    raise Exception("Please indicate a valid baseline")
-
-                pred_groups = BaselineGroup(**batch)
-                SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
-                scores_batch = SupernovaFIXScore(**batch)
-                # print(scores_batch)
-
-                if baseline in all_baselines_scores.keys():
-                    scores = all_baselines_scores[baseline]
-                    scores = scores + scores_batch.tolist()
-                else: 
-                    scores = scores_batch.tolist()
-                all_baselines_scores[baseline] = scores
-                
-    # print(all_baselines_scores)
+                if baseline == 'identity':
+                    BaselineGroup = IdentityGroups(ngroups=1, window_size=100)
+                    pred_groups = BaselineGroup(**batch)
+                    SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
+                    fix_score = SupernovaFIXScore(**batch)
+                    fix_score_all_i += fix_score.sum().item()
+                    elements_all_i += fix_score.numel()
+                elif baseline == 'random':
+                    BaselineGroup = RandomGroups(scaling = 1.5, distinct = 6, window_size=100)
+                    pred_groups = BaselineGroup(**batch)
+                    SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
+                    fix_score = SupernovaFIXScore(**batch)
+                    fix_score_all_r += fix_score.sum().item()
+                    elements_all_r += fix_score.numel()
+                elif baseline == '5':
+                    BaselineGroup = SliceGroups(ngroups=5, window_size=100)
+                    pred_groups = BaselineGroup(**batch)
+                    SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
+                    fix_score = SupernovaFIXScore(**batch)
+                    fix_score_all_a += fix_score.sum().item()
+                    elements_all_a += fix_score.numel()
+                elif baseline == '10':
+                    BaselineGroup = SliceGroups(ngroups=10, window_size=100)
+                    pred_groups = BaselineGroup(**batch)
+                    SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
+                    fix_score = SupernovaFIXScore(**batch)
+                    fix_score_all_b += fix_score.sum().item()
+                    elements_all_b += fix_score.numel()
+                elif baseline == '15':
+                    BaselineGroup = SliceGroups(ngroups=15, window_size=100)
+                    pred_groups = BaselineGroup(**batch)
+                    SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
+                    fix_score = SupernovaFIXScore(**batch)
+                    fix_score_all_c += fix_score.sum().item()
+                    elements_all_c += fix_score.numel()
+                elif baseline == 'clustering':
+                    BaselineGroup = ClusterGroups(max_groups=9)
+                    pred_groups = BaselineGroup(**batch)
+                    SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
+                    fix_score = SupernovaFIXScore(**batch)
+                    fix_score_all_cluster += fix_score.sum().item()
+                    elements_all_cluster += fix_score.numel()
+                elif baseline == 'archipelago':
+                    BaselineGroup = ArchipelagoGroups(max_groups=9)
+                    pred_groups = BaselineGroup(**batch)
+                    SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
+                    fix_score = SupernovaFIXScore(**batch)
+                    fix_score_all_arc += fix_score.sum().item()
+                    elements_all_arc += fix_score.numel()
     for baseline in baselines:
-        scores = torch.tensor(all_baselines_scores[baseline])
-        # print(f"Avg alignment of {baseline} features: {scores.mean():.4f}")
+        if baseline == 'identity':
+            scores = fix_score_all_i / elements_all_i
+        elif baseline == 'random':
+            scores = fix_score_all_r / elements_all_r
+        elif baseline == '5':
+            scores = fix_score_all_a / elements_all_a
+        elif baseline == '10':
+            scores = fix_score_all_b / elements_all_b
+        elif baseline == '15':
+            scores = fix_score_all_c / elements_all_c
+        elif baseline == 'clustering':
+            scores = fix_score_all_cluster / elements_all_cluster
+        elif baseline == 'archipelago':
+            scores = fix_score_all_arc / elements_all_arc
+        print(f"Avg alignment of {baseline} features: {scores:.4f}")
         all_baselines_scores[baseline] = scores
-        
+
     return all_baselines_scores
 
 def plot_data_by_wavelength(times, fluxes, errors, wavelengths, title, bi, j):

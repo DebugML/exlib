@@ -14,9 +14,7 @@ import sys
 from tqdm import tqdm
 sys.path.append("../src")
 import exlib
-from exlib.features.vision.patch import PatchGroups
-from exlib.features.vision.quickshift import QuickshiftGroups
-from exlib.features.vision.watershed import WatershedGroups
+from exlib.features.vision import *
 
 
 HF_DATA_REPO = "BrachioLab/chestx"
@@ -133,8 +131,9 @@ class ChestXMetric(nn.Module):
 
     def forward(
         self,
-        groups_pred: torch.LongTensor(),
-        groups_true: torch.LongTensor(),
+        groups_pred: torch.LongTensor,
+        groups_true: torch.LongTensor,
+        big_batch: bool = False
     ):
         """
             groups_pred: (N,P,H W)
@@ -148,8 +147,18 @@ class ChestXMetric(nn.Module):
         Gt = groups_true.bool().long()
 
         # Make (N,P,T)-shaped lookup tables for the intersection and union
-        inters = (Gp.view(N,P,1,H,W) * Gt.view(N,1,T,H,W)).sum(dim=(-1,-2))
-        unions = (Gp.view(N,P,1,H,W) + Gt.view(N,1,T,H,W)).clamp(0,1).sum(dim=(-1,-2))
+        if big_batch:
+            inters = (Gp.view(N,P,1,H,W) * Gt.view(N,1,T,H,W)).sum(dim=(-1,-2))
+            unions = (Gp.view(N,P,1,H,W) + Gt.view(N,1,T,H,W)).clamp(0,1).sum(dim=(-1,-2))
+        else:
+            # More memory-efficient
+            inters = torch.zeros(N,P,T).to(Gp.device)
+            unions = torch.zeros(N,P,T).to(Gp.device)
+            for i in range(P):
+                for j in range(T):
+                    inters[:,i,j] = (Gp[:,i] * Gt[:,j]).sum(dim=(-1,-2))
+                    unions[:,i,j] = (Gp[:,i] + Gt[:,j]).clamp(0,1).sum(dim=(-1,-2))
+
         ious = inters / unions  # (N,P,T)
         ious[~ious.isfinite()] = 0 # Set the bad values to a score of zero
         iou_maxs = ious.max(dim=-1).values   # (N,P): max_{gt in Gt} iou(gp, gt)
@@ -162,28 +171,48 @@ class ChestXMetric(nn.Module):
 
 
 def get_chestx_scores(
-    baselines = ['patch', 'quickshift', 'watershed'],
+    baselines = ["patch", "quickshift", "watershed", "identity", "random", "sam"],
     dataset = ChestXDataset(split="test"),
     metric = ChestXMetric(),
-    N = 100,
-    batch_size = 4,
+    N = 256,
+    batch_size = 16,
+    device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
-    dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
+    if N < len(dataset):
+        dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
     all_baselines_scores = {}
     for item in tqdm(dataloader):
         for baseline in baselines:
-            if baseline == 'patch': # patch
-                groups = PatchGroups()
-            elif baseline == 'quickshift': # quickshift
-                groups = QuickshiftGroups()
-            elif baseline == 'watershed': # watershed
-                groups = WatershedGroups()
+            if baseline == "patch": # patch
+                groups = PatchGroups(grid_size=(8,8), mode="grid")
+            elif baseline == "quickshift": # quickshift
+                groups = QuickshiftGroups(max_groups=20)
+            elif baseline == "watershed": # watershed
+                groups = WatershedGroups(max_groups=20)
+            elif baseline == "identity":
+                groups = IdentityGroups()
+            elif baseline == "random":
+                groups = RandomGroups(max_groups=20)
+            elif baseline == "sam":
+                groups = SamGroups(max_groups=20)
+            elif baseline == "ace":   # ACE
+                groups = NeuralQuickshiftGroups(max_groups=20)
+            elif baseline == "craft":
+                groups = CraftGroups(max_groups=20)
+            elif baseline == "archipelago":
+                groups = ArchipelagoGroups(max_groups=20)
 
-            image = item["image"]
+            groups.eval().to(device)
+
+            image = item["image"].to(device)
+
             with torch.no_grad():
                 structs_masks = item["structs"]
                 pred_masks = groups(image)
+
+                structs_masks = structs_masks.to(device)
+                pred_masks = pred_masks.to(device)
                 score = metric(pred_masks, structs_masks) # (N,H,W)
 
                 if baseline in all_baselines_scores.keys():
