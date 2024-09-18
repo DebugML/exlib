@@ -171,10 +171,10 @@ class ChestXMetric(nn.Module):
 
 
 def get_chestx_scores(
-    baselines = ['patch', 'quickshift', 'watershed', 'identity', 'random', 'sam'],
+    baselines = ["patch", "quickshift", "watershed", "identity", "random", "sam"],
     dataset = ChestXDataset(split="test"),
     metric = ChestXMetric(),
-    N = 1024,
+    N = 256,
     batch_size = 16,
     device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
@@ -184,22 +184,24 @@ def get_chestx_scores(
     all_baselines_scores = {}
     for item in tqdm(dataloader):
         for baseline in baselines:
-            if baseline == 'patch': # patch
+            if baseline == "patch": # patch
                 groups = PatchGroups(grid_size=(8,8), mode="grid")
-            elif baseline == 'quickshift': # quickshift
+            elif baseline == "quickshift": # quickshift
                 groups = QuickshiftGroups(max_groups=20)
-            elif baseline == 'watershed': # watershed
+            elif baseline == "watershed": # watershed
                 groups = WatershedGroups(max_groups=20)
-            elif baseline == 'identity':
+            elif baseline == "identity":
                 groups = IdentityGroups()
-            elif baseline == 'random':
+            elif baseline == "random":
                 groups = RandomGroups(max_groups=20)
-            elif baseline == 'sam':
+            elif baseline == "sam":
                 groups = SamGroups(max_groups=20)
             elif baseline == "ace":   # ACE
                 groups = NeuralQuickshiftGroups(max_groups=20)
             elif baseline == "craft":
                 groups = CraftGroups(max_groups=20)
+            elif baseline == "archipelago":
+                groups = ArchipelagoGroups(max_groups=20)
 
             groups.eval().to(device)
 

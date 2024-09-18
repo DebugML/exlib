@@ -140,8 +140,8 @@ def get_cholec_scores(
     baselines = ["patch", "quickshift", "watershed", "identity", "random", "sam"],
     dataset = CholecDataset(split="test"),
     metric = CholecMetric(),
-    N = 1024,
-    batch_size = 4,
+    N = 256,
+    batch_size = 8,
     device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
     if N < len(dataset):
@@ -169,6 +169,8 @@ def get_cholec_scores(
                 groups = NeuralQuickshiftGroups(max_groups=8)
             elif baseline == "craft":
                 groups = CraftGroups(max_groups=8)
+            elif baseline == "archipelago":
+                groups = ArchipelagoGroups(max_groups=8)
 
             groups.eval().to(device)
 
