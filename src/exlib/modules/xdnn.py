@@ -55,10 +55,12 @@ class XDNN(nn.Module):
                                                             std = [ 1., 1., 1. ])])
 
     def forward(self, x, t=None, return_groups=False, mini_batch_size=16, **kwargs):
-        with torch.enable_grad():
-            images = self.normalize(x).detach()
+        
+        images = self.normalize(x).detach()
+        outputs = self.model(images)
 
-            def get_attr_fn(x, t, model, normalize):
+        def get_attr_fn(x, t, model, normalize):
+            with torch.enable_grad():
                 x = x.clone().detach().requires_grad_()
                 images = normalize(x)
                 outputs = model(images)
@@ -67,10 +69,10 @@ class XDNN(nn.Module):
                 target_outputs = torch.gather(outputs, 1, target.unsqueeze(-1))
                 gradients = torch.autograd.grad(torch.unbind(target_outputs), images, create_graph=False, allow_unused=True)[0]
                 attributions = gradients * images
-                # print('attributions', attributions.shape)
-                # print('outputs', outputs.shape)
-                return attributions, outputs
+            # print('attributions', attributions.shape)
+            # print('outputs', outputs.shape)
+            return attributions
 
-            attributions, outputs = get_explanations_in_minibatches(images, t, get_attr_fn, mini_batch_size=mini_batch_size, show_pbar=False, model=self.model, normalize=self.normalize)
-
-            return AttributionOutputXDNN(outputs, attributions)
+        attributions, _ = get_explanations_in_minibatches(x, t, get_attr_fn, mini_batch_size=mini_batch_size, show_pbar=False, model=self.model, normalize=self.normalize)
+        
+        return AttributionOutputXDNN(outputs, attributions)

@@ -103,7 +103,12 @@ class FGSMGradSSA:
         self.N = N
 
     def __call__(self, model, data, target, num_steps=10, early_stop=False, use_sign=False, use_softmax=False, verbose=False):
-        image_width = 224
+        num_channels = data.shape[1]
+        if num_channels != 3:
+            T_kernel = gkern(7, 3, num_channels=num_channels)
+        else:
+            T_kernel = gkern(7, 3)
+        image_width = data.shape[2]
         momentum = 1.0
         alpha = self.epsilon / num_steps
         grad = 0
@@ -113,7 +118,7 @@ class FGSMGradSSA:
         sigma = 16
         # import pdb; pdb.set_trace()
         dt = data.clone().detach().requires_grad_(True)
-        # print('dt', dt.shape)
+        # print('dt first', dt.shape)
         target_clone = target.clone()
         hats = [[data[i:i+1].clone()] for i in range(data.shape[0])]
         grads = [[] for _ in range(data.shape[0])]
@@ -122,6 +127,7 @@ class FGSMGradSSA:
             pbar = tqdm(range(num_steps))
         else:
             pbar = range(num_steps)
+        # print('first loop')
         for _ in pbar:
         # for _ in tqdm(range(num_steps)):
             model.zero_grad()
@@ -130,11 +136,13 @@ class FGSMGradSSA:
                 pbar_n = tqdm(range(N))
             else:
                 pbar_n = range(N)
+            # print('_', _)
             for n in pbar_n:
             # for n in tqdm(range(N)):
-                gauss = torch.randn(dt.size()[0], 3, image_width, image_width) * (sigma / 255)
+                gauss = torch.randn(dt.size()[0], num_channels, image_width, image_width) * (sigma / 255)
                 # print('gauss', gauss.shape)
                 gauss = gauss.cuda()
+                # print('dt', dt.shape)
                 dt_dct = dct_2d(dt + gauss).cuda()
                 # print('dt_dct', dt_dct.shape)
                 mask = (torch.rand_like(dt) * 2 * rho + 1 - rho).cuda()
@@ -150,18 +158,26 @@ class FGSMGradSSA:
                 loss = F.cross_entropy(output_v3, target)
                 loss.backward()
                 noise += dt_idct.grad.data
+                # print('dt_idct.grad.data', dt_idct.grad.data.shape)
             noise = noise / N
             # TI-FGSM https://arxiv.org/pdf/1904.02884.pdf
-            noise = F.conv2d(noise, T_kernel, bias=None, stride=1, padding=(3, 3), groups=3)
-
+            # print('noise bf', noise.shape)
+            # print('T_kernel', T_kernel.shape)
+            # print('num_channels', num_channels)
+            noise_copy = noise.clone()
+            noise = F.conv2d(noise, T_kernel, bias=None, stride=1, padding=(3, 3), groups=num_channels)
+            # print('noise af', noise.shape)
+            # import pdb; pdb.set_trace()
             # MI-FGSM https://arxiv.org/pdf/1710.06081.pdf
             noise = noise / torch.abs(noise).mean([1, 2, 3], keepdim=True)
             noise = momentum * grad + noise
             grad = noise
             grad = grad.detach()
+            # print('hello!! dt', dt.shape)
             for i, idx in enumerate(leave_index):
                 grads[idx].append(grad[i:i+1].clone())
             if use_sign:
+                # print('use_sign')
                 data_grad = grad.sign()
                 adv_data = dt - alpha * data_grad
                 total_grad = adv_data - data
@@ -169,17 +185,27 @@ class FGSMGradSSA:
                     total_grad, -self.epsilon, self.epsilon)
                 dt.data = torch.clamp(
                     data + total_grad, self.data_min, self.data_max)
+                # print('dt', dt.shape)
+                # print('data', data.shape)
+                # print('total_grad', total_grad.shape)
+                # print('adv_data', adv_data.shape)
                 for i, idx in enumerate(leave_index):
                     hats[idx].append(dt[i:i+1].data.clone())
             else:
+                # print('not use_sign')
                 data_grad = grad / \
                     grad.view(grad.shape[0], -1).norm(dim=1,
                                                       keepdim=True).view(-1, 1, 1, 1)
                 adv_data = dt - alpha * data_grad * 100
                 dt.data = torch.clamp(
                     adv_data, self.data_min, self.data_max)
+                # print('dt', dt.shape)
+                # print('data', data.shape)
+                # print('total_grad', total_grad.shape)
+                # print('adv_data', adv_data.shape)
                 for i, idx in enumerate(leave_index):
                     hats[idx].append(dt[i:i+1].data.clone())
+            # print('hi!! dt', dt.shape)
             if early_stop:
                 adv_pred = model(dt)
                 adv_pred_argmax = adv_pred.argmax(-1)
@@ -199,13 +225,19 @@ class FGSMGradSSA:
         model.zero_grad()
         grad = 0
         noise = 0
+        # print('second loop')
         for n in range(N):
-            gauss = torch.randn(dt.size()[0], 3, image_width, image_width) * (sigma / 255)
+            gauss = torch.randn(dt.size()[0], num_channels, image_width, image_width) * (sigma / 255)
+            # print('gauss', gauss.shape)
             gauss = gauss.cuda()
             dt_dct = dct_2d(dt + gauss).cuda()
+            # print('dt_dct', dt_dct.shape)
             mask = (torch.rand_like(dt) * 2 * rho + 1 - rho).cuda()
+            # print('mask', mask.shape)
             dt_idct = idct_2d(dt_dct * mask)
+            # print('dt_idct', dt_idct.shape)
             dt_idct = V(dt_idct, requires_grad = True)
+            # print('dt_idct', dt_idct.shape)
 
             # DI-FGSM https://arxiv.org/abs/1803.06978
             output_v3 = model(DI(dt_idct))
@@ -216,7 +248,7 @@ class FGSMGradSSA:
             noise += dt_idct.grad.data
         noise = noise / N
         # TI-FGSM https://arxiv.org/pdf/1904.02884.pdf
-        noise = F.conv2d(noise, T_kernel, bias=None, stride=1, padding=(3, 3), groups=3)
+        noise = F.conv2d(noise, T_kernel, bias=None, stride=1, padding=(3, 3), groups=num_channels)
 
         # MI-FGSM https://arxiv.org/pdf/1710.06081.pdf
         noise = noise / torch.abs(noise).mean([1, 2, 3], keepdim=True)

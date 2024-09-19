@@ -111,12 +111,16 @@ class AgiImageCls(FeatureAttrMethod):
                     else:
                         init_pred = t[i:i+1, ti]
                     num_classes = output.size(-1)
-                    selected_ids = range(0,num_classes - 1,int(num_classes/self.topk))
+                    try:
+                        selected_ids = range(0,num_classes - 1,int(num_classes/self.topk))
+                    except:
+                        selected_ids = range(0,num_classes) # if topk is too large, then just use all classes
 
                     top_ids = selected_ids # only for predefined ids
                     # initialize the step_grad towards all target false classes
                     step_grad = 0 
                     # num_class = 1000 # number of total classes
+                    # import pdb; pdb.set_trace()
                     for l in top_ids:
 
                         targeted = torch.tensor([l]).to(x.device) 
@@ -129,6 +133,7 @@ class AgiImageCls(FeatureAttrMethod):
 
                     # adv_ex = step_grad.squeeze().detach().cpu().numpy() # / topk
                     attrs_i.append(step_grad)
+                # import pdb; pdb.set_trace()
                 attrs.append(torch.stack(attrs_i, -1))
         attrs = torch.cat(attrs, 0).to(x.device)
         if attrs.ndim == 5 and attrs.size(-1) == 1:

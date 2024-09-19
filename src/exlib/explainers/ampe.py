@@ -33,7 +33,8 @@ class AmpeImageCls(FeatureAttrMethod):
             
             attributions_all, _ = get_explanations_in_minibatches(x, t, get_attr_fn, mini_batch_size=16, show_pbar=False, 
                 model=self.model, data_min=self.data_min, data_max=self.data_max, epsilon=self.epsilon,
-                N=self.N, num_steps=self.num_steps, use_sign=self.use_sign, use_softmax=self.use_softmax, verbose=self.verbose)
+                N=self.N, num_steps=self.num_steps, use_sign=self.use_sign, 
+                use_softmax=self.use_softmax, verbose=self.verbose)
 
             # actual correct one:
             # # print('ampe_attr', ampe_attr.shape)

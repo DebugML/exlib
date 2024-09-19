@@ -185,8 +185,9 @@ def get_explanations_in_minibatches(x, t, get_attr_fn, mini_batch_size, show_pba
 
     attrs = attrs.view(attrs_shape).permute(0, 2, 3, 4, 1).contiguous()
 
-    if (attrs[:,0] == attrs[:,1]).all() and (attrs[:,0] == attrs[:,2]).all():
-        attrs = attrs[:,0:1]
+    if attrs.size(1) != 1:
+        if (attrs[:,0] == attrs[:,1]).all() and (attrs[:,0] == attrs[:,2]).all():
+            attrs = attrs[:,0:1]
 
     return attrs, preds
 
