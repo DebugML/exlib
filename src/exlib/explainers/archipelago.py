@@ -23,6 +23,7 @@ class ArchipelagoImageCls(FeatureAttrMethod):
         self.segmenter = segmenter
 
     def forward(self, x, t=None, verbose=0, **kwargs):
+        # print('x.shape', x.shape)
         bsz = x.shape[0]
 
         if not isinstance(t, torch.Tensor) and t is not None:
@@ -36,6 +37,7 @@ class ArchipelagoImageCls(FeatureAttrMethod):
             image = x[i].cpu().permute(1,2,0).numpy()
             ti = t[i] if t is not None else None
             if ti is None:
+                # import pdb; pdb.set_trace()
                 predictions = self.model_wrapper(np.expand_dims(image,0))
                 class_idx = [predictions[0].argsort()[::-1][0]]
             else:
