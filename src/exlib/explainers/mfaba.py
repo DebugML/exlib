@@ -7,11 +7,12 @@ from .common import *
 from .libs.saliency.saliency_zoo import mfaba_cos, mfaba_norm, mfaba_sharp, mfaba_smooth
 
 class MfabaImageCls(FeatureAttrMethod):
-    def __init__(self, model, mfaba_type='sharp'):
+    def __init__(self, model, mfaba_type='sharp', mfaba_args={}):
         super().__init__(model)
         self.mfaba_type = mfaba_type
+        self.mfaba_args = mfaba_args
 
-    def forward(self, x, t, return_groups=False, **kwargs):
+    def forward(self, x, t, return_groups=False):
         type_mapping = {
             'sharp': mfaba_sharp,
             'smooth': mfaba_smooth,
@@ -31,7 +32,7 @@ class MfabaImageCls(FeatureAttrMethod):
                 return torch.tensor(mfaba(model, x, t, **kwargs), device=x.device)
 
             attributions_all, _ = get_explanations_in_minibatches(x, t, get_attr_fn, mini_batch_size=16, show_pbar=False,
-                model=self.model, **kwargs)
+                model=self.model, **self.mfaba_args)
             
             attrs = attributions_all
             if attrs.ndim == 5 and attrs.size(-1) == 1:

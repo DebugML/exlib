@@ -13,7 +13,7 @@ import sys
 sys.path.append("../src")
 import exlib
 # Baselines
-from exlib.features.text.text_chunk import text_chunk
+from exlib.features.text import *
 from exlib.utils.politeness_helper import load_lexica
 
 
@@ -143,9 +143,19 @@ class Metric(nn.Module):
 
         return group_alignments
 
+    def forward(self, group_masks:list, original_data:list, language="english"): # original_data is processed_word_list
+        #create groups
+        groups = []
+        for i in range(len(group_masks)):
+            mask = group_masks[i]
+            group = [original_data[j] for j in range(len(mask)) if mask[j] == 1 and original_data[j] != '']
+            if group != []:
+                groups.append(group)
+#         print(groups)
+        return np.mean(self.calculate_group_alignment(groups, language))
 
 
-def get_politeness_scores(baselines = ['word', 'phrase', 'sentence']):
+def get_politeness_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'random', 'archipelago', 'clustering']):
     dataset = PolitenessDataset("test")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = PolitenessClassifier()
@@ -160,30 +170,48 @@ def get_politeness_scores(baselines = ['word', 'phrase', 'sentence']):
     for baseline in baselines:
         print(f"---- {baseline} Level Groups ----")
         baseline_scores = []
+        
+        if baseline == 'clustering':
+            utterances_path = 'utterances/multilingual_politeness_test.pt'
+            if os.path.exists(utterances_path):
+                utterances = torch.load(utterances_path)
+            else:
+                utterances = [' '.join(dataset[i]['word_list']) for i in range(len(dataset))]
+                torch.save(utterances, utterances_path)
+            groups = ClusteringGroups(utterances, distinct=26)
+            
         for i, batch in enumerate(tqdm(dataloader)):
             word_lists = batch['word_list']
             word_lists = list(map(list, zip(*word_lists)))
             processed_word_lists = []
             for word_list in word_lists:
                 processed_word_lists.append([word for word in word_list if word != ''])
-            for word_list in processed_word_lists:
-                groups = []
-                groups = text_chunk(word_list, baseline)
-                alignments = torch.tensor(metric.calculate_group_alignment(groups))
-                score = alignments.mean()
-                baseline_scores.append(score)
-            # if i > 2:
-            #     break
-    
-        # print(baseline_scores)    
-        baseline_scores = torch.stack(baseline_scores)
-        all_baselines_scores[baseline] = baseline_scores
-    
-    # print(alignment_scores_all)
-    return all_baselines_scores
+            
+            if baseline == 'archipelago': # get masks by batch
+                backbone_model = model.model #load_model()
+                groups = ArchipelagoGroups(backbone_model, 26)
+                all_batch_masks = groups(batch)
+            
+            for example in range(len(processed_word_lists)):
+                if baseline in ['word', 'phrase', 'sentence']:
+                    masks = text_chunk(word_lists[example], baseline, return_mask=True)
+                elif baseline == 'identity':
+                    groups = IdentityGroups()
+                    masks = groups(word_lists[example])
+                elif baseline == 'random':
+                    groups = RandomGroups(distinct=26)
+                    masks = groups(word_lists[example])
+                elif baseline == 'archipelago': # get score for each example with the already generated masks
+                    masks = all_batch_masks[example]
+#                 masks = groups(word_lists[example])
+                score = metric(masks, word_lists[example])
+#                 print(score)
 
+                baseline_scores.append(score)
+#             break
 
             
-                
-    
-
+#         baseline_scores = torch.stack(baseline_scores)
+        baseline_scores = torch.tensor(baseline_scores)
+        all_baselines_scores[baseline] = baseline_scores
+    return all_baselines_scores

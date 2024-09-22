@@ -73,7 +73,10 @@ class ChestXDataset(torch.utils.data.Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        image = self.preprocess_image(self.dataset[idx]["image"])
+        image = self.dataset[idx]["image"]
+        if len(image.shape) == 2:
+            image = image.unsqueeze(0)
+        image = self.preprocess_image(image)
         pathols = torch.tensor(self.dataset[idx]["pathols"])
         structs = torch.tensor(self.dataset[idx]["structs"])
 
@@ -181,6 +184,7 @@ def get_chestx_scores(
     if N < len(dataset):
         dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    print('dataloader', len(dataloader))
     all_baselines_scores = {}
     for item in tqdm(dataloader):
         for baseline in baselines:
@@ -206,6 +210,8 @@ def get_chestx_scores(
             groups.eval().to(device)
 
             image = item["image"].to(device)
+            if baseline == "archipelago":
+                image = image.repeat(1,3,1,1)
 
             with torch.no_grad():
                 structs_masks = item["structs"]

@@ -112,7 +112,7 @@ class SupernovaFIXScores(nn.Module):
         return (scores_per_feature.sum(1)/torch.clamp(groups.sum(1), min=1e-5)).mean(dim=1)
 
 def get_supernova_scores(
-    baselines = ['identity', 'random', '5', '10', '15', 'archipelago'],
+    baselines = ['identity', 'random', '5', '10', '15', 'clustering', 'archipelago'],
     dataset = SupernovaDataset(data_dir = "BrachioLab/supernova-timeseries", split="test"),
     SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = torch.Tensor([])),
     batch_size = 5,
@@ -127,6 +127,7 @@ def get_supernova_scores(
     fix_score_all_a = 0
     fix_score_all_b = 0
     fix_score_all_c = 0
+    fix_score_all_cluster = 0
     fix_score_all_arc = 0
     
     elements_all_i = 0
@@ -134,6 +135,7 @@ def get_supernova_scores(
     elements_all_a = 0
     elements_all_b = 0
     elements_all_c = 0
+    elements_all_cluster = 0
     elements_all_arc = 0
     
     all_baselines_scores = {}
@@ -175,8 +177,15 @@ def get_supernova_scores(
                     fix_score = SupernovaFIXScore(**batch)
                     fix_score_all_c += fix_score.sum().item()
                     elements_all_c += fix_score.numel()
+                elif baseline == 'clustering':
+                    BaselineGroup = ClusterGroups(max_groups=9)
+                    pred_groups = BaselineGroup(**batch)
+                    SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
+                    fix_score = SupernovaFIXScore(**batch)
+                    fix_score_all_cluster += fix_score.sum().item()
+                    elements_all_cluster += fix_score.numel()
                 elif baseline == 'archipelago':
-                    BaselineGroup = SliceGroups(ngroups=5, window_size=100)
+                    BaselineGroup = ArchipelagoGroups(max_groups=9)
                     pred_groups = BaselineGroup(**batch)
                     SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
                     fix_score = SupernovaFIXScore(**batch)
@@ -193,6 +202,8 @@ def get_supernova_scores(
             scores = fix_score_all_b / elements_all_b
         elif baseline == '15':
             scores = fix_score_all_c / elements_all_c
+        elif baseline == 'clustering':
+            scores = fix_score_all_cluster / elements_all_cluster
         elif baseline == 'archipelago':
             scores = fix_score_all_arc / elements_all_arc
         print(f"Avg alignment of {baseline} features: {scores:.4f}")

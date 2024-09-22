@@ -4,13 +4,13 @@ import scipy.stats as st
 import torch.nn.functional as F
 
 """Translation-Invariant https://arxiv.org/abs/1904.02884"""
-def gkern(kernlen=15, nsig=3):
+def gkern(kernlen=15, nsig=3, num_channels=3):
     x = np.linspace(-nsig, nsig, kernlen)
     kern1d = st.norm.pdf(x)
     kernel_raw = np.outer(kern1d, kern1d)
     kernel = kernel_raw / kernel_raw.sum()
     kernel = kernel.astype(np.float32)
-    gaussian_kernel = np.stack([kernel, kernel, kernel])  # 5*5*3
+    gaussian_kernel = np.stack([kernel] * num_channels)  # 5*5*3
     gaussian_kernel = np.expand_dims(gaussian_kernel, 1)  # 1*5*5*3
     gaussian_kernel = torch.from_numpy(gaussian_kernel).cuda()  # tensor and cuda
     return gaussian_kernel

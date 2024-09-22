@@ -49,22 +49,40 @@ def fgsm_step(image, epsilon, data_grad_adv, data_grad_lab):
     return perturbed_rect, delta
     # return perturbed_image, delta
 
-def pgd_step(image, epsilon, model, init_pred, targeted, max_iter):
+def pgd_step(image, epsilon, model, init_pred, targeted, max_iter, pred_mode='cls', reg_eps=0.0001):
     """target here is the targeted class to be perturbed to"""
     perturbed_image = image.clone()
+    if pred_mode == 'reg':
+        pred_original = model(image)
+    else:
+        pred_original = None # not needed for classification
     c_delta = 0 # cumulative delta
     for i in range(max_iter):
         # requires grads
         perturbed_image.requires_grad = True
-        output = model(perturbed_image)
-        pred = output.max(1, keepdim=True)[1] # get the index of the max log-probability
-        # if attack is successful, then break
-        if pred.item() == targeted.item():
-            break
-        # select the false class label
-        output = F.softmax(output, dim=1)
-        loss = output[0,targeted.item()]
-
+        # import pdb; pdb.set_trace()
+        if pred_mode == 'cls':
+            output = model(perturbed_image)
+            pred = output.max(1, keepdim=True)[1] # get the index of the max log-probability
+            # if attack is successful, then break
+            # for regression, it will be if pred and targeted are close enough then it is successful
+            if pred.item() == targeted.item():
+                break
+            # select the false class label
+            output = F.softmax(output, dim=1)
+            loss = output[0,targeted.item()]
+        else: # reg
+            output = model(perturbed_image)
+            # if attack is successful, then break
+            # for regression, it will be if pred and targeted are close enough then it is successful
+            
+            criterion = torch.nn.MSELoss()
+            # if criterion(output[0,targeted], pred_original[0,targeted])< reg_eps:
+            #     break
+            loss = output[0,targeted]
+            
+            # loss = criterion(output[0,targeted], pred_original[0,targeted])
+        
         model.zero_grad()
         loss.backward(retain_graph=True)
         data_grad_adv = perturbed_image.grad.data.detach().clone()
@@ -76,16 +94,17 @@ def pgd_step(image, epsilon, model, init_pred, targeted, max_iter):
         data_grad_lab = perturbed_image.grad.data.detach().clone()
         perturbed_image, delta = fgsm_step(image, epsilon, data_grad_adv, data_grad_lab)
         c_delta += delta
-    
+    # import pdb; pdb.set_trace()
     return c_delta, perturbed_image
 
 
 class AgiImageCls(FeatureAttrMethod):
-    def __init__(self, model, max_iter=15, topk=15, epsilon=0.05):
+    def __init__(self, model, max_iter=15, topk=15, epsilon=0.05, pred_mode='cls'):
         super().__init__(model)
         self.max_iter = max_iter
         self.topk = topk
         self.epsilon = epsilon
+        self.pred_mode = pred_mode
 
     def forward(self, x, t, return_groups=False, verbose=1, **kwargs):
         assert len(x) == len(t)
@@ -111,12 +130,16 @@ class AgiImageCls(FeatureAttrMethod):
                     else:
                         init_pred = t[i:i+1, ti]
                     num_classes = output.size(-1)
-                    selected_ids = range(0,num_classes - 1,int(num_classes/self.topk))
+                    try:
+                        selected_ids = range(0,num_classes - 1,int(num_classes/self.topk))
+                    except:
+                        selected_ids = range(0,num_classes) # if topk is too large, then just use all classes
 
                     top_ids = selected_ids # only for predefined ids
                     # initialize the step_grad towards all target false classes
                     step_grad = 0 
                     # num_class = 1000 # number of total classes
+                    # import pdb; pdb.set_trace()
                     for l in top_ids:
 
                         targeted = torch.tensor([l]).to(x.device) 
@@ -124,13 +147,15 @@ class AgiImageCls(FeatureAttrMethod):
                             continue # we don't want to attack to the predicted class.
 
                         delta, perturbed_image = pgd_step(x[i:i+1], self.epsilon, self.model, 
-                                init_pred, targeted, self.max_iter)
+                                init_pred, targeted, self.max_iter, pred_mode=self.pred_mode)
                         step_grad += delta
 
                     # adv_ex = step_grad.squeeze().detach().cpu().numpy() # / topk
                     attrs_i.append(step_grad)
+                # import pdb; pdb.set_trace()
                 attrs.append(torch.stack(attrs_i, -1))
         attrs = torch.cat(attrs, 0).to(x.device)
         if attrs.ndim == 5 and attrs.size(-1) == 1:
             attrs = attrs.squeeze(-1)
         return FeatureAttrOutput(attrs, {})
+# %%

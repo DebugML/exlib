@@ -57,8 +57,6 @@ class ArchipelagoGroups(nn.Module):
 
     def forward(self, x: torch.FloatTensor):
         N, C, H, W = x.shape    # Assume 4-dimensional
-        if C == 1:
-            x = x.repeat(1,3,1,1)
 
         results = self.archipelago(x)
         segs = results.group_masks.squeeze(1)

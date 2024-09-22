@@ -31,7 +31,7 @@ class BCos(nn.Module):
             return attrs[None, :3], torch.tensor([expln['prediction']], device=x.device)
 
         attrs, preds = get_explanations_in_minibatches(x, t, get_attr_fn, mini_batch_size=1, 
-                        show_pbar=False, model=self.model, prepare_data=self.preprocess)
+                        show_pbar=False, model=self.model, preprocess=self.preprocess)
 
         if attrs.ndim == 5 and attrs.size(-1) == 1:
             attrs = attrs.squeeze(-1)
