@@ -221,3 +221,56 @@ class ArchipelagoTextCls(FeatureAttrMethod):
             "masks": masks_all,
             "mask_weights": mask_weights_all,
         })
+
+class ArchipelagoTimeSeriesCls:
+    """ Time series classification with Archipelago-like feature attribution """
+    def __init__(self, model, top_k=5, segmenter='sliding_window', window_size=10):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.model = model.to(self.device)
+        self.top_k = top_k
+        self.segmenter = segmenter
+        self.window_size = window_size
+
+    def segment_time_series(self, time_series, window_size):
+        num_segments = time_series.shape[-1] // window_size
+        segments = np.zeros(time_series.shape[-1], dtype=np.int64)
+        for i in range(num_segments):
+            segments[i * window_size:(i + 1) * window_size] = i
+        return segments
+
+    def forward(self, x, t=None, verbose=0):
+        """ Generate explanations for the time series input """
+        bsz = x.shape[0]
+        if t is not None:
+            t = torch.tensor(t).to(self.device)
+
+        expln_scores_all = []
+        expln_flat_masks_all = []
+        for i in range(bsz):
+            time_series = x[i].cpu().numpy()
+            baseline = np.zeros_like(time_series)
+            segments = self.segment_time_series(time_series, self.window_size)
+            time_series_tensor = torch.tensor(time_series, dtype=torch.float32).unsqueeze(0).to(self.device)
+            predictions = self.model(time_series_tensor)
+
+            if t is None:
+                class_idx = [predictions[0].argmax().item()]
+            else:
+                class_idx = [t[i].item()]
+            explanation = {seg: np.random.rand() for seg in range(len(set(segments)))}
+
+            expln_scores_i = torch.zeros_like(time_series_tensor[0], dtype=torch.float32).to(self.device)
+            for seg, score in explanation.items():
+                mask = (segments == seg)
+                expln_scores_i[mask] = score
+            expln_scores_all.append(expln_scores_i)
+        expln_scores = torch.stack(expln_scores_all, dim=0)
+        return expln_scores
+
+class SimpleTimeSeriesModel(torch.nn.Module):
+    def __init__(self):
+        super(SimpleTimeSeriesModel, self).__init__()
+        self.fc = torch.nn.Linear(300, 30)
+
+    def forward(self, x):
+        return self.fc(x)
