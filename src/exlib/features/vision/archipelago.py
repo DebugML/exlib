@@ -31,17 +31,17 @@ class ArchipelagoGroups(nn.Module):
             # Convert PyTorch tensor to NumPy array if necessary
             if isinstance(image, torch.Tensor):
                 image = image.cpu().numpy()
-            
+
             # Ensure the image is 3D (H, W, C)
             if image.ndim == 2:
                 image = image[:, :, np.newaxis]
             elif image.ndim == 3 and image.shape[0] in [1, 3]:  # (C, H, W) format
                 image = np.transpose(image, (1, 2, 0))
-            
+
             # Broadcast to 3 channels if necessary
             if image.shape[2] == 1:
                 image = np.broadcast_to(image, (*image.shape[:2], 3))
-            
+
             # Ensure the image is in the correct dtype
             image = (image * 255).astype(np.uint8)
 
@@ -56,6 +56,10 @@ class ArchipelagoGroups(nn.Module):
         self.flat = flat
 
     def forward(self, x: torch.FloatTensor):
+        N, C, H, W = x.shape    # Assume 4-dimensional
+        if C == 1:
+            x = x.repeat(1,3,1,1)
+
         results = self.archipelago(x)
         segs = results.group_masks.squeeze(1)
         if self.flat:

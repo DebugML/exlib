@@ -11,16 +11,16 @@ from exlib.datasets.chestx import get_chestx_scores
 from exlib.datasets.mass_maps import get_mass_maps_scores
 from exlib.datasets.supernova import get_supernova_scores
 from exlib.datasets.multilingual_politeness import get_politeness_scores
-from exlib.datasets.emotion import get_emotion_scores
+from exlib.datasets.emotion import get_emotion_scores   
 
 
 all_settings_baselines = {
-    'cholec': ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft'],
-    'chestx': ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft'],
+    'cholec': ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
+    'chestx': ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
     'mass_maps': ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
-    'supernova': ['chunk 5', 'chunk 10', 'chunk 15'], # chunk size
-    'multilingual_politeness': ['word', 'phrase', 'sentence'],
-    'emotion': ['word', 'phrase', 'sentence']
+    'supernova': ['identity', 'random', 'slice 5', 'slice 10', 'slice 15', 'clustering', 'archipelago'],
+    'multilingual_politeness': ['identity', 'random', 'word', 'phrase', 'sentence', 'clustering', 'archipelago'],
+    'emotion': ['identity', 'random', 'word', 'phrase', 'sentence', 'clustering', 'archipelago']
 }
 
 all_settings_methods = {
@@ -59,7 +59,7 @@ if __name__ == "__main__":
         # print(all_baselines_scores)
         for name in all_baselines_scores:
             metric = torch.tensor(all_baselines_scores[name])
-            mean_metric = metric.mean()
+            mean_metric = metric.nanmean()
             print(f'BASELINE {name} mean score: {mean_metric}')
             
         torch.save(all_baselines_scores, scores_filepath)
