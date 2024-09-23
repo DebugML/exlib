@@ -241,8 +241,6 @@ class ArchipelagoTextCls(FeatureAttrMethod):
             if 'attention_mask' in kwargs:
                 text_len = kwargs['attention_mask'][i].sum()
                 x_i = x[i][:text_len]
-                for k, v in kwargs.items():
-                    print(k, v)
                 kwargs_i = {k: v[i][:text_len] for k, v in kwargs.items()}
             else:
                 x_i = x[i]
