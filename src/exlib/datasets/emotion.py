@@ -77,9 +77,9 @@ class EmotionClassifier(nn.Module):
         return outputs
 
     
-class Metric(nn.Module): 
+class EmotionFixScore(nn.Module): 
     def __init__(self, model_name:str="all-mpnet-base-v2"): 
-        super(Metric, self).__init__()
+        super().__init__()
         self.model = sentence_transformers.SentenceTransformer(model_name)
         points = self.define_circumplex()
         self.x1 = points[0]
@@ -161,7 +161,7 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'r
     model.to(device)
     model.eval()
 
-    metric = Metric()
+    metric = EmotionFixScore()
 #     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
 
     distinct = 4
