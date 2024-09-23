@@ -219,7 +219,7 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'r
                     masks = all_batch_masks[example]
                 #print(word_lists[example])
                 score = metric(masks, word_lists[example])
-#                 print(score)
+                #print(score)
 
                 baseline_scores.append(score)
 #             if i > 50:
