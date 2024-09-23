@@ -73,7 +73,7 @@ Please cite the FIX paper as follows if you use the data or code from the FIX be
   title={The FIX Benchmark: Extracting Features Interpretable to eXperts}, 
   author={Jin, Helen and Havaldar, Shreya and Kim, Chaehyeon and Xue, Anton and You, Weiqiu and Qu, Helen and Gatti, Marco and Hashimoto, Daniel and Jain, Bhuvnesh and Madani, Amin and Sako, Masao and Ungar, Lyle and Wong, Eric},
   journal={arXiv preprint arXiv:2409.13684},
-  year={2024},
+  year={2024}
 }
 ```
 
