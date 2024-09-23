@@ -29,7 +29,6 @@ class ImageXformer:  # (data_xformer):
         return image
 
     def efficient_xform(self, inst):
-        # import pdb; pdb.set_trace()
         mask_indices, base, change = get_efficient_mask_indices(
             inst, self.baseline, self.input
         )

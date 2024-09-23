@@ -92,7 +92,7 @@ class CholecModel(nn.Module, hfhub.PyTorchModelHubMixin):
         )
 
 
-class CholecMetric(nn.Module):
+class CholecFixScore(nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -138,12 +138,17 @@ class CholecMetric(nn.Module):
 
 def get_cholec_scores(
     baselines = ["patch", "quickshift", "watershed", "identity", "random", "sam"],
-    dataset = CholecDataset(split="test"),
-    metric = CholecMetric(),
+    dataset = None,
+    metric = None,
     N = 256,
     batch_size = 8,
     device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
+    torch.manual_seed(1234)
+    if dataset is None:
+        dataset = CholecDataset(split="test")
+    if metric is None:
+        metric = CholecFixScore()
     if N < len(dataset):
         dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)

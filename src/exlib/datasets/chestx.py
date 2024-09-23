@@ -128,7 +128,7 @@ class ChestXPathologyModel(nn.Module, hfhub.PyTorchModelHubMixin):
         return out[:,pathol_idxs]
 
 
-class ChestXMetric(nn.Module):
+class ChestXFixScore(nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -175,12 +175,18 @@ class ChestXMetric(nn.Module):
 
 def get_chestx_scores(
     baselines = ["patch", "quickshift", "watershed", "identity", "random", "sam"],
-    dataset = ChestXDataset(split="test"),
-    metric = ChestXMetric(),
+    dataset = None,
+    metric = None,
     N = 256,
     batch_size = 16,
     device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
+    torch.manual_seed(1234)
+    if dataset is None:
+        dataset = ChestXDataset(split="test")
+    if metric is None:
+        metric = ChestXFixScore()
+
     if N < len(dataset):
         dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)

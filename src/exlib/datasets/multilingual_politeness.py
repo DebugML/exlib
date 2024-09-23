@@ -73,7 +73,7 @@ class PolitenessClassifier(nn.Module):
         return logits
 
 
-class Metric(nn.Module): 
+class PolitenessFixScore(nn.Module): 
     def __init__(self, model_name:str="distiluse-base-multilingual-cased"): 
         super(Metric, self).__init__()
         self.model = sentence_transformers.SentenceTransformer(model_name)
@@ -156,14 +156,14 @@ class Metric(nn.Module):
 
 
 def get_politeness_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'random', 'archipelago', 'clustering']):
+    torch.manual_seed(1234)
     dataset = PolitenessDataset("test")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = PolitenessClassifier()
     model.to(device)
     model.eval()
 
-    metric = Metric()
-    torch.manual_seed(1234)
+    metric = PolitenessFixScore()
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
     all_baselines_scores = {}
     

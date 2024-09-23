@@ -71,6 +71,7 @@ class EmotionClassifier(nn.Module):
     def __init__(self):
         super(EmotionClassifier, self).__init__()
         self.model = AutoModel.from_pretrained(MODEL_REPO)
+        torch.manual_seed(1234)
         self.classifier = nn.Linear(768, 28)
 
     def forward(self, input_ids, attention_mask= None):
@@ -82,9 +83,9 @@ class EmotionClassifier(nn.Module):
         return outputs
 
     
-class Metric(nn.Module): 
+class EmotionFixScore(nn.Module): 
     def __init__(self, model_name:str="all-mpnet-base-v2"): 
-        super(Metric, self).__init__()
+        super().__init__()
         self.model = sentence_transformers.SentenceTransformer(model_name)
         points = self.define_circumplex()
         self.x1 = points[0]
@@ -157,15 +158,14 @@ class Metric(nn.Module):
 
 
 def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'random', 'archipelago', 'clustering']):
+    torch.manual_seed(1234)
     dataset = EmotionDataset("test")
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = EmotionClassifier()
     model.to(device)
     model.eval()
-
-    metric = Metric()
-    torch.manual_seed(1234)
+    metric = EmotionFixScore()
 
     distinct = 4
     scaling = 1.5
@@ -229,5 +229,5 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'r
         baseline_scores = torch.tensor(baseline_scores)
         all_baselines_scores[baseline] = baseline_scores
     
-    print(all_baselines_scores)
+    #print(all_baselines_scores)
     return all_baselines_scores

@@ -124,7 +124,7 @@ class MassMapsConvnetForImageRegression(PreTrainedModel):
         )
 
 
-class MassMapsAlignment(nn.Module):
+class MassMapsFixScore(nn.Module):
     def __init__(self, void_threshold=0, cluster_threshold=3, 
                  eps=1e-6,
                 #  void_scale=1, cluster_scale=1
@@ -255,6 +255,7 @@ def get_mass_maps_scores(
     batch_size = 16,
     device = "cuda" if torch.cuda.is_available() else "cpu"
 ):
+    torch.manual_seed(1234)
     # Load model
     model = MassMapsConvnetForImageRegression.from_pretrained(MODEL_REPO) # BrachioLab/massmaps-conv
     model = model.to(device)
@@ -267,7 +268,7 @@ def get_mass_maps_scores(
     val_dataset.set_format('torch', columns=['input', 'label'])
     test_dataset.set_format('torch', columns=['input', 'label'])
     
-    massmaps_align = MassMapsAlignment()
+    massmaps_align = MassMapsFixScore()
 
     if N < len(test_dataset):
         test_dataset, _ = torch.utils.data.random_split(test_dataset, [N, len(test_dataset)-N])
@@ -294,7 +295,7 @@ def get_mass_maps_scores(
             # baseline
             for base_i, baseline_name in enumerate(baselines):
                 if baseline_name == 'patch':
-                    baseline = PatchGroups(grid_size=(8,8), mode='grid')
+                    baseline = PatchGroups(grid_size=(5,5), mode='grid')
                 elif baseline_name == 'quickshift':
                     baseline = QuickshiftGroups(kernel_size=5, max_dist=10, sigma=0.2, max_groups=25)
                 elif baseline_name == 'watershed':
@@ -312,14 +313,15 @@ def get_mass_maps_scores(
                 elif baseline_name == 'craft':
                     baseline = CraftGroups(max_groups=25)
                 elif baseline_name == 'archipelago':
-                    baseline = ArchipelagoGroups(feature_extractor=model, max_groups=25, 
-                        quickshift_kwargs={'kernel_size': 5, 'max_dist': 10, 'ratio': 1.0, 'sigma': 0.2})
+                    baseline = ArchipelagoGroups(feature_extractor=model, max_groups=25, #segmenter=segmenter)
+                        quickshift_kwargs={'kernel_size': 3, 'max_dist': 5, 'ratio': 1.0, 'sigma': 0.2})
                 else:
                     raise Exception("Please indicate a valid baseline")
 
                 baseline.eval().to(device)
                 
                 groups = baseline(X)
+                # print(baseline_name, 'groups', groups.shape)
     
                 # alignment
                 scores_batch = massmaps_align(groups, X)

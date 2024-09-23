@@ -21,31 +21,37 @@ class ArchipelagoGroups(nn.Module):
             "sigma": 10.
         },
         max_groups: int = 16,
+        segmenter = None,
         flat: bool = False,
     ):
         super().__init__()
         self.feature_extractor = feature_extractor
         self.quickshift_kwargs = quickshift_kwargs
 
-        def segmenter(image):
-            # Convert PyTorch tensor to NumPy array if necessary
-            if isinstance(image, torch.Tensor):
-                image = image.cpu().numpy()
+        if segmenter is None:
+            def segmenter(image):
+                # Convert PyTorch tensor to NumPy array if necessary
+                if isinstance(image, torch.Tensor):
+                    image = image.cpu().numpy()
 
-            # Ensure the image is 3D (H, W, C)
-            if image.ndim == 2:
-                image = image[:, :, np.newaxis]
-            elif image.ndim == 3 and image.shape[0] in [1, 3]:  # (C, H, W) format
-                image = np.transpose(image, (1, 2, 0))
+                # Ensure the image is 3D (H, W, C)
+                if image.ndim == 2:
+                    image = image[:, :, np.newaxis]
+                elif image.ndim == 3 and image.shape[0] in [1, 3]:  # (C, H, W) format
+                    image = np.transpose(image, (1, 2, 0))
 
-            # Broadcast to 3 channels if necessary
-            if image.shape[2] == 1:
-                image = np.broadcast_to(image, (*image.shape[:2], 3))
+                # Broadcast to 3 channels if necessary
+                if image.shape[2] == 1:
+                    image = np.broadcast_to(image, (*image.shape[:2], 3))
 
-            # Ensure the image is in the correct dtype
-            image = (image * 255).astype(np.uint8)
+                # Ensure the image is in the correct dtype
+                image = (image * 255).astype(np.uint8)
 
-            return quickshift(image, **quickshift_kwargs)
+                seg_results = quickshift(image, **quickshift_kwargs)
+
+                # print('seg_results', torch.tensor(seg_results).unique().shape)
+
+                return seg_results
 
         self.archipelago = ArchipelagoImageCls(
             model=self.feature_extractor,
@@ -53,6 +59,7 @@ class ArchipelagoGroups(nn.Module):
             # segmenter='patch'
             segmenter=segmenter
         )
+        self.max_groups = max_groups
         self.flat = flat
 
     def forward(self, x: torch.FloatTensor):
@@ -60,9 +67,17 @@ class ArchipelagoGroups(nn.Module):
 
         results = self.archipelago(x)
         segs = results.group_masks.squeeze(1)
+
+        if segs.unique().max() + 1 >= self.max_groups:
+            div_by = (segs.unique().max() + 1) / self.max_groups
+            segs = segs // div_by
+            segs = segs.long()
+
+        # import pdb; pdb.set_trace()
         if self.flat:
+            # segs[segs >= self.max_groups] = -1
             return segs.to(x.device) # (N,H,W)
         else:
-            return F.one_hot(segs).permute(0,3,1,2).to(x.device) # (N,M,H,W)
+            return F.one_hot(segs).permute(0,3,1,2).to(x.device) #[:,:self.max_groups] # (N,M,H,W)
 
 
