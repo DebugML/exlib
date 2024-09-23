@@ -7,7 +7,7 @@
 
 Official implementation for "The FIX Benchmark: Extracting Features Interpretable to eXperts".
 
-Authors: Helen Jin, Shreya Havaldar, Chaehyeon Kim, Anton Xue, Weiqiu You, Helen Qu, Marco Gatti, Daniel A Hashimoto, Bhuvnesh Jain, Amin Madani, Masao Sako, Lyle Ungar, Eric Wong.
+Authors: Helen Jin, Shreya Havaldar, Chaehyeon Kim, Anton Xue, Weiqiu You, Helen Qu, Marco Gatti, Daniel A. Hashimoto, Bhuvnesh Jain, Amin Madani, Masao Sako, Lyle Ungar, Eric Wong.
 
 ## Overview
 FIX is a benchmark for **extracting features that are interpretable to real-world experts**, spanning diverse data modalities and applications, from doctors performing gall bladder surgery to cosmologists studying supernovae. The FIX benchmark allows domains to measure alignment of extracted features with expert features either *implicitly* with a scoring function or *explicitly* with expert annotations.
@@ -69,10 +69,14 @@ FIX currently includes 6 datasets, which we've briefly listed below. All dataset
 ## Citation
 Please cite the FIX paper as follows if you use the data or code from the FIX benchmark:
 ```bibtex
-@misc{jin2024fix,
-  title={The FIX Benchmark: Extracting Features Interpretable to eXperts},
-  author={Helen Jin and Shreya Havaldar and Chaehyeon Kim and Anton Xue and Weiqiu You and Helen Qu and Marco Gatti and Daniel A Hashimoto and Bhuvnesh Jain and Amin Madani and Masao Sako and Lyle Ungar and Eric Wong},
-  year={2024}
+@misc{jin2024fixbenchmarkextractingfeatures,
+      title={The FIX Benchmark: Extracting Features Interpretable to eXperts}, 
+      author={Helen Jin and Shreya Havaldar and Chaehyeon Kim and Anton Xue and Weiqiu You and Helen Qu and Marco Gatti and Daniel A Hashimoto and Bhuvnesh Jain and Amin Madani and Masao Sako and Lyle Ungar and Eric Wong},
+      year={2024},
+      eprint={2409.13684},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2409.13684}, 
 }
 ```
 
