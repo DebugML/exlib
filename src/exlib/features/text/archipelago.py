@@ -1,4 +1,6 @@
 from exlib.explainers.archipelago import ArchipelagoTextCls
+import torch
+import torch.nn as nn
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -76,8 +78,6 @@ class ArchipelagoGroups(nn.Module):
             ngroups = min(self.max_groups, len(processed_word_lists[i]))
             all_groups_pos = torch.topk(expln.attributions[i][:len(processed_word_lists[i])], len(processed_word_lists[i])).indices
             all_groups_pos = torch.tensor_split(all_groups_pos, ngroups)
-#             print('ngroups: ', ngroups)
-#             print('all_groups_pos: ', all_groups_pos)
             masks = []
             for groups_pos in all_groups_pos:
                 mask = torch.zeros(len(word_lists[i]))

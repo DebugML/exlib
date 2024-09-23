@@ -124,7 +124,7 @@ class MassMapsConvnetForImageRegression(PreTrainedModel):
         )
 
 
-class MassMapsAlignment(nn.Module):
+class MassMapsFixScore(nn.Module):
     def __init__(self, void_threshold=0, cluster_threshold=3, 
                  eps=1e-6,
                 #  void_scale=1, cluster_scale=1
@@ -268,7 +268,7 @@ def get_mass_maps_scores(
     val_dataset.set_format('torch', columns=['input', 'label'])
     test_dataset.set_format('torch', columns=['input', 'label'])
     
-    massmaps_align = MassMapsAlignment()
+    massmaps_align = MassMapsFixScore()
 
     if N < len(test_dataset):
         test_dataset, _ = torch.utils.data.random_split(test_dataset, [N, len(test_dataset)-N])

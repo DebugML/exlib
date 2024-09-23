@@ -128,7 +128,7 @@ class ChestXPathologyModel(nn.Module, hfhub.PyTorchModelHubMixin):
         return out[:,pathol_idxs]
 
 
-class ChestXMetric(nn.Module):
+class ChestXFixScore(nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -185,7 +185,7 @@ def get_chestx_scores(
     if dataset is None:
         dataset = ChestXDataset(split="test")
     if metric is None:
-        metric = ChestXMetric()
+        metric = ChestXFixScore()
 
     if N < len(dataset):
         dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
