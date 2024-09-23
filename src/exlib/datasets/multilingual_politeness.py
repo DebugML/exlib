@@ -156,6 +156,7 @@ class Metric(nn.Module):
 
 
 def get_politeness_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'random', 'archipelago', 'clustering']):
+    torch.manual_seed(1234)
     dataset = PolitenessDataset("test")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = PolitenessClassifier()
@@ -163,7 +164,6 @@ def get_politeness_scores(baselines = ['word', 'phrase', 'sentence', 'identity',
     model.eval()
 
     metric = Metric()
-    torch.manual_seed(1234)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
     all_baselines_scores = {}
     
