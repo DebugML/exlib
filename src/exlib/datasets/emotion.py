@@ -14,9 +14,15 @@ import sys
 sys.path.append("../src")
 import exlib
 # Baselines
-from exlib.features.text import *
 from exlib.utils.emotion_helper import project_points_onto_axes, load_emotions
 
+from exlib.features.text.identity import IdentityGroups
+from exlib.features.text.random import RandomGroups
+from exlib.features.text.word import WordGroups
+from exlib.features.text.phrase import PhraseGroups
+from exlib.features.text.sentence import SentenceGroups
+from exlib.features.text.clustering import ClusteringGroups
+from exlib.features.text.archipelago import WrappedModel, ArchipelagoGroups
 
 MODEL_REPO = "BrachioLab/roberta-base-go_emotions"
 DATASET_REPO = "BrachioLab/emotion"
@@ -146,13 +152,12 @@ class Metric(nn.Module):
             group = [original_data[j] for j in range(len(mask)) if mask[j] == 1 and original_data[j] != '']
             if group != []:
                 groups.append(group)
-        print(groups)
+        #print(groups)
         return np.mean(self.calculate_group_alignment(groups, language))
 
 
 def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'random', 'archipelago', 'clustering']):
     dataset = EmotionDataset("test")
-#     dataset = EmotionDataset("train")
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = EmotionClassifier()
@@ -161,14 +166,13 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'r
 
     metric = Metric()
     torch.manual_seed(1234)
-#     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
 
     distinct = 4
     scaling = 1.5
     
     all_baselines_scores = {}
     for baseline in baselines:
-        print(f"---- {baseline} Level Groups ----")
+        #print(f"---- {baseline} Level Groups ----")
         
         baseline_scores = []
         if baseline == 'clustering':
@@ -213,9 +217,7 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'r
                     masks = groups(word_lists[example])
                 elif baseline == 'archipelago': # get score for each example with the already generated masks
                     masks = all_batch_masks[example]
-                print(word_lists[example])
-                print(len(masks))
-                print(masks)
+                #print(word_lists[example])
                 score = metric(masks, word_lists[example])
 #                 print(score)
 
@@ -227,5 +229,5 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'r
         baseline_scores = torch.tensor(baseline_scores)
         all_baselines_scores[baseline] = baseline_scores
     
-    # print(all_baselines_scores)
+    print(all_baselines_scores)
     return all_baselines_scores
