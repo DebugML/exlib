@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/exlib)](https://pypi.org/project/exlib/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/BrachioLab/exlib/blob/master/LICENSE)
 
-[<a href="https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf">Paper</a>] [<a href="https://brachiolab.github.io/fix/">Website</a>] 
+[<a href="https://arxiv.org/abs/2409.13684">Paper</a>] [<a href="https://brachiolab.github.io/fix/">Website</a>] 
 
 Official implementation for "The FIX Benchmark: Extracting Features Interpretable to eXperts".
 
