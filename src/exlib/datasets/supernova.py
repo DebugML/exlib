@@ -24,7 +24,7 @@ from exlib.explainers.archipelago import ArchipelagoTimeSeriesCls
 from datasets import load_dataset
 import torch
 import yaml
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 import huggingface_hub as hfhub
 import sys
 
@@ -211,9 +211,9 @@ def get_supernova_scores(
                     # elements_all_arc += fix_score.numel()
                 pred_groups = BaselineGroup(**batch)
                 fix_score = metric(groups=pred_groups, **batch)
-                fix_score = fix_score.sum().item()
+                fix_score_sum = fix_score.sum().item()
                 elements = fix_score.numel()
-                fix_scores_all[baseline] += fix_score
+                fix_scores_all[baseline] += fix_score_sum
                 elements_all[baseline] += elements
 
     for baseline in baselines:
