@@ -15,6 +15,16 @@ class ModelWrapperTorch:
         if self.input_type == "text":
             X = torch.LongTensor(X).to(self.device)
             preds = self.model(X)[0].data.cpu().numpy()
+
+        elif self.input_type == "time_series":
+            X = torch.FloatTensor(X).to(self.device)
+            X = X.squeeze(3)
+            past_values = X[:, 0:2].permute(0, 2, 1)
+            past_time_features = X[:, 2:4].permute(0, 2, 1)
+            past_observed_mask = X[:, 4:6]
+            preds = self.model(past_values = past_values, past_time_features = past_time_features, past_observed_mask = past_observed_mask).logits.data.cpu().numpy()
+            preds = preds.squeeze(1)
+                                  
         else:
             X = torch.FloatTensor(X).to(self.device)
             if self.input_type == "image":
