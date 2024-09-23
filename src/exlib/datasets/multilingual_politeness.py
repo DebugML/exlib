@@ -75,7 +75,7 @@ class PolitenessClassifier(nn.Module):
 
 class PolitenessFixScore(nn.Module): 
     def __init__(self, model_name:str="distiluse-base-multilingual-cased"): 
-        super(Metric, self).__init__()
+        super().__init__()
         self.model = sentence_transformers.SentenceTransformer(model_name)
         self.centroids = self.get_centroids()
     
@@ -143,7 +143,7 @@ class PolitenessFixScore(nn.Module):
 
         return group_alignments
 
-    def forward(self, group_masks:list, original_data:list, language="english"): # original_data is processed_word_list
+    def forward(self, group_masks:list, original_data:list, language="english", reduce=True): # original_data is processed_word_list
         #create groups
         groups = []
         for i in range(len(group_masks)):
@@ -152,7 +152,11 @@ class PolitenessFixScore(nn.Module):
             if group != []:
                 groups.append(group)
 #         print(groups)
-        return np.mean(self.calculate_group_alignment(groups, language))
+        scores = self.calculate_group_alignment(groups, language)
+        if reduce:
+            return np.mean(scores)
+        else:
+            return scores
 
 
 def get_politeness_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'random', 'archipelago', 'clustering']):

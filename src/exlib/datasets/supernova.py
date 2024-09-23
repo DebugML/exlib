@@ -69,7 +69,7 @@ class SupernovaFixScore(nn.Module):
         self.sigma = sigma
         self.nchunk = nchunk
 
-    def forward(self, groups, labels=None, past_values=None, past_time_features=None, past_observed_mask=None):
+    def forward(self, groups, labels=None, past_values=None, past_time_features=None, past_observed_mask=None, reduce=True):
         sigma, nchunk = self.sigma, self.nchunk
         t, wl, flux, err = past_time_features[:,:,0].to(device), past_time_features[:,:,1].to(device), past_values[:,:,0].to(device), past_values[:,:,1].to(device)
         unique_wl = torch.Tensor([3670.69, 4826.85, 6223.24, 7545.98, 8590.9, 9710.28]).to(device)
@@ -115,8 +115,12 @@ class SupernovaFixScore(nn.Module):
         alignment_score, _ = torch.max(alignment_score_wv, dim=2)
         alignment_score = torch.nan_to_num(alignment_score)
         scores_per_feature = (alignment_score.unsqueeze(2)*groups)
-        
-        return (scores_per_feature.sum(1)/torch.clamp(groups.sum(1), min=1e-5)).mean(dim=1)
+
+        scores = (scores_per_feature.sum(1)/torch.clamp(groups.sum(1), min=1e-5))
+        if reduce:
+            return scores.mean(dim=1)
+        else:
+            return scores
 
 def get_supernova_scores(
     baselines = ['identity', 'random', '5', '10', '15', 'clustering', 'archipelago'],
@@ -137,22 +141,6 @@ def get_supernova_scores(
 
     fix_scores_all = defaultdict(float)
     elements_all = defaultdict(float)
-
-    # fix_score_all_i = 0
-    # fix_score_all_r = 0
-    # fix_score_all_a = 0
-    # fix_score_all_b = 0
-    # fix_score_all_c = 0
-    # fix_score_all_cluster = 0
-    # fix_score_all_arc = 0
-    
-    # elements_all_i = 0
-    # elements_all_r = 0
-    # elements_all_a = 0
-    # elements_all_b = 0
-    # elements_all_c = 0
-    # elements_all_cluster = 0
-    # elements_all_arc = 0
     
     all_baselines_scores = {}
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -163,52 +151,19 @@ def get_supernova_scores(
             for baseline in baselines:
                 if baseline == 'identity':
                     BaselineGroup = IdentityGroups(ngroups=1, window_size=100)
-                    # pred_groups = BaselineGroup(**batch)
-                    # SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
                     
                 elif baseline == 'random':
                     BaselineGroup = RandomGroups(scaling = 1.5, distinct = 6, window_size=100)
-                    # pred_groups = BaselineGroup(**batch)
-                    # SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
-                    # fix_score = SupernovaFIXScore(**batch)
-                    # fix_score = metric(groups=pred_groups, **batch)
-                    # fix_score_all_r += fix_score.sum().item()
-                    # elements_all_r += fix_score.numel()
                 elif baseline == '5':
                     BaselineGroup = SliceGroups(ngroups=5, window_size=100)
-                    # pred_groups = BaselineGroup(**batch)
-                    # SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
-                    # fix_score = SupernovaFIXScore(**batch)
-                    # fix_score_all_a += fix_score.sum().item()
-                    # elements_all_a += fix_score.numel()
                 elif baseline == '10':
                     BaselineGroup = SliceGroups(ngroups=10, window_size=100)
-                    # pred_groups = BaselineGroup(**batch)
-                    # SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
-                    # fix_score = SupernovaFIXScore(**batch)
-                    # fix_score_all_b += fix_score.sum().item()
-                    # elements_all_b += fix_score.numel()
                 elif baseline == '15':
                     BaselineGroup = SliceGroups(ngroups=15, window_size=100)
-                    # pred_groups = BaselineGroup(**batch)
-                    # SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
-                    # fix_score = SupernovaFIXScore(**batch)
-                    # fix_score_all_c += fix_score.sum().item()
-                    # elements_all_c += fix_score.numel()
                 elif baseline == 'clustering':
                     BaselineGroup = ClusterGroups(nclusters=7)
-                    # pred_groups = BaselineGroup(**batch)
-                    # SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
-                    # fix_score = SupernovaFIXScore(**batch)
-                    # fix_score_all_cluster += fix_score.sum().item()
-                    # elements_all_cluster += fix_score.numel()
                 elif baseline == 'archipelago':
                     BaselineGroup = ArchipelagoGroups(feature_extractor=model, max_groups=9)
-                    # pred_groups = BaselineGroup(**batch)
-                    # SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
-                    # fix_score = SupernovaFIXScore(**batch)
-                    # fix_score_all_arc += fix_score.sum().item()
-                    # elements_all_arc += fix_score.numel()
                 pred_groups = BaselineGroup(**batch)
                 fix_score = metric(groups=pred_groups, **batch)
                 fix_score_sum = fix_score.sum().item()
@@ -218,20 +173,6 @@ def get_supernova_scores(
 
     for baseline in baselines:
         scores = fix_scores_all[baseline] / elements_all[baseline]
-        # if baseline == 'identity':
-        #     scores = fix_score_all_i / elements_all_i
-        # elif baseline == 'random':
-        #     scores = fix_score_all_r / elements_all_r
-        # elif baseline == '5':
-        #     scores = fix_score_all_a / elements_all_a
-        # elif baseline == '10':
-        #     scores = fix_score_all_b / elements_all_b
-        # elif baseline == '15':
-        #     scores = fix_score_all_c / elements_all_c
-        # elif baseline == 'clustering':
-        #     scores = fix_score_all_cluster / elements_all_cluster
-        # elif baseline == 'archipelago':
-        #     scores = fix_score_all_arc / elements_all_arc
         print(f"Avg alignment of {baseline} features: {scores:.4f}")
         all_baselines_scores[baseline] = scores
 

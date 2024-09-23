@@ -136,7 +136,8 @@ class ChestXFixScore(nn.Module):
         self,
         groups_pred: torch.LongTensor,
         groups_true: torch.LongTensor,
-        big_batch: bool = False
+        big_batch: bool = False,
+        reduce: bool = True
     ):
         """
             groups_pred: (N,P,H W)
@@ -170,7 +171,10 @@ class ChestXFixScore(nn.Module):
         pred_aligns_sum = (Gp * iou_maxs.view(N,P,1,1)).sum(dim=1) # (N,H,W)
         score = pred_aligns_sum / Gp.sum(dim=1) # (N,H,W), division is the |Gp(feaure)|
         score[~score.isfinite()] = 0    # Make div-by-zero things zero
-        return score    # (N,H,W), a score for each feature
+        if reduce:
+            return score.mean(dim=(1,2))
+        else:
+            return score    # (N,H,W), a score for each feature
 
 
 def get_chestx_scores(
@@ -229,9 +233,9 @@ def get_chestx_scores(
 
                 if baseline in all_baselines_scores.keys():
                     scores = all_baselines_scores[baseline]
-                    scores.append(score.mean(dim=(1,2)))
+                    scores.append(score) #.mean(dim=(1,2)))
                 else: 
-                    scores = [score.mean(dim=(1,2))]
+                    scores = [score] #.mean(dim=(1,2))]
                 all_baselines_scores[baseline] = scores
 
     for baseline in baselines:

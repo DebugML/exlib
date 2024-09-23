@@ -145,7 +145,7 @@ class EmotionFixScore(nn.Module):
         alignments = [self.tanh(np.exp(-a)) for a in alignments]
         return alignments
     
-    def forward(self, group_masks:list, original_data:list, language="english"): # original_data is processed_word_list
+    def forward(self, group_masks:list, original_data:list, language="english", reduce=True): # original_data is processed_word_list
         #create groups
         groups = []
         for i in range(len(group_masks)):
@@ -154,7 +154,11 @@ class EmotionFixScore(nn.Module):
             if group != []:
                 groups.append(group)
         #print(groups)
-        return np.mean(self.calculate_group_alignment(groups, language))
+        scores = self.calculate_group_alignment(groups, language)
+        if reduce:
+            return np.mean(scores)
+        else:
+            return scores
 
 
 def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'random', 'archipelago', 'clustering']):

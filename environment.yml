@@ -22,4 +22,4 @@ dependencies:
   - scikit-image
   - pip
   - pip:
-    - git+https://github.com/fallcat/pytorch-grad-cam.git
+    - git+https://github.com/BrachioLab/pytorch-grad-cam.git
