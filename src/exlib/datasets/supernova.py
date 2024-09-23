@@ -12,17 +12,26 @@ from typing import Optional, Union, List
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm.auto import tqdm
+
 # Baselines
 from exlib.features.time_series.identity import IdentityGroups
 from exlib.features.time_series.random import RandomGroups
 from exlib.features.time_series.slice import SliceGroups
+from exlib.features.time_series.clustering import ClusterGroups
+from exlib.features.time_series.archipelago import ArchipelagoGroups
+
+from exlib.explainers.archipelago import ArchipelagoTimeSeriesCls
 from datasets import load_dataset
 import torch
 import yaml
 from collections import namedtuple
 import huggingface_hub as hfhub
+import sys
 
 from exlib.utils.supernova_helper import *
+
+import logging
+logging.getLogger().setLevel(logging.WARNING)
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -80,7 +89,6 @@ class SupernovaFIXScores(nn.Module):
         t_delta = t[:,None,None,:] - t_means.unsqueeze(3)
         flux_delta = flux[:,None,None,:] - flux_means.unsqueeze(3)
         
-        # weighted linear regression by groups
         numerator = (groups_by_wl*t_delta*flux_delta).sum(-1)
         denominator = (groups_by_wl*t_delta*t_delta).sum(-1)
         beta = numerator / denominator
@@ -139,6 +147,9 @@ def get_supernova_scores(
     elements_all_arc = 0
     
     all_baselines_scores = {}
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = SupernovaClsModel(model_path = "BrachioLab/supernova-classification").to(device)
+    model.eval()
     with torch.no_grad():
         for bi, batch in tqdm(enumerate(test_dataloader), total=len(test_dataloader)):
             for baseline in baselines:
@@ -178,14 +189,14 @@ def get_supernova_scores(
                     fix_score_all_c += fix_score.sum().item()
                     elements_all_c += fix_score.numel()
                 elif baseline == 'clustering':
-                    BaselineGroup = ClusterGroups(max_groups=9)
+                    BaselineGroup = ClusterGroups(nclusters=7)
                     pred_groups = BaselineGroup(**batch)
                     SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
                     fix_score = SupernovaFIXScore(**batch)
                     fix_score_all_cluster += fix_score.sum().item()
                     elements_all_cluster += fix_score.numel()
                 elif baseline == 'archipelago':
-                    BaselineGroup = ArchipelagoGroups(max_groups=9)
+                    BaselineGroup = ArchipelagoGroups(feature_extractor=model, max_groups=9)
                     pred_groups = BaselineGroup(**batch)
                     SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
                     fix_score = SupernovaFIXScore(**batch)
