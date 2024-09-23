@@ -65,6 +65,7 @@ class EmotionClassifier(nn.Module):
     def __init__(self):
         super(EmotionClassifier, self).__init__()
         self.model = AutoModel.from_pretrained(MODEL_REPO)
+        torch.manual_seed(1234)
         self.classifier = nn.Linear(768, 28)
 
     def forward(self, input_ids, attention_mask= None):
@@ -151,6 +152,7 @@ class Metric(nn.Module):
 
 
 def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'random', 'archipelago', 'clustering']):
+    torch.manual_seed(1234)
     dataset = EmotionDataset("test")
 #     dataset = EmotionDataset("train")
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
@@ -160,7 +162,6 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'r
     model.eval()
 
     metric = Metric()
-    torch.manual_seed(1234)
 #     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
 
     distinct = 4

@@ -255,6 +255,7 @@ def get_mass_maps_scores(
     batch_size = 16,
     device = "cuda" if torch.cuda.is_available() else "cpu"
 ):
+    torch.manual_seed(1234)
     # Load model
     model = MassMapsConvnetForImageRegression.from_pretrained(MODEL_REPO) # BrachioLab/massmaps-conv
     model = model.to(device)
