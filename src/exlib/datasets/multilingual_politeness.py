@@ -29,10 +29,7 @@ def load_data():
 
 
 def load_model():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = XLMRobertaForSequenceClassification.from_pretrained(MODEL_REPO)
-    model.to(device)
-    return model
+    return XLMRobertaForSequenceClassification.from_pretrained(MODEL_REPO)
 
 
 class PolitenessDataset(torch.utils.data.Dataset):
@@ -160,10 +157,13 @@ class PolitenessFixScore(nn.Module):
             return scores
 
 
-def get_politeness_scores(baselines = ['identity', 'random', 'word', 'phrase', 'sentence', 'clustering', 'archipelago'], utterances_path = 'utterances/multilingual_politeness_test.pt'):
+def get_politeness_scores(
+    baselines = ['identity', 'random', 'word', 'phrase', 'sentence', 'clustering', 'archipelago'],
+    utterances_path = 'utterances/multilingual_politeness_test.pt',
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+):
     torch.manual_seed(1234)
     dataset = PolitenessDataset("test")
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = PolitenessClassifier()
     model.to(device)
     model.eval()

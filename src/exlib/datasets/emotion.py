@@ -30,10 +30,7 @@ def load_data():
 
 
 def load_model():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = AutoModel.from_pretrained(MODEL_REPO)
-    model.to(device)
-    return model
+    return AutoModel.from_pretrained(MODEL_REPO)
 
 
 #go emotions dataset
@@ -158,11 +155,14 @@ class EmotionFixScore(nn.Module):
             return scores
 
 
-def get_emotion_scores(baselines = ['identity', 'random', 'word', 'phrase', 'sentence', 'clustering', 'archipelago'], utterances_path = 'utterances/emotion_test.pt'):
+def get_emotion_scores(
+    baselines = ['identity', 'random', 'word', 'phrase', 'sentence', 'clustering', 'archipelago'],
+    utterances_path = 'utterances/emotion_test.pt',
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+):
     torch.manual_seed(1234)
     dataset = EmotionDataset("test")
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = EmotionClassifier()
     model.to(device)
     model.eval()
