@@ -100,7 +100,8 @@ class CholecFixScore(nn.Module):
         self,
         groups_pred: torch.LongTensor,
         groups_true: torch.LongTensor,
-        big_batch: bool = False
+        big_batch: bool = False,
+        reduce: bool = True
     ):
         """
             groups_pred: (N,P,H W)
@@ -133,11 +134,14 @@ class CholecFixScore(nn.Module):
         pred_aligns_sum = (Gp * iou_maxs.view(N,P,1,1)).sum(dim=1) # (N,H,W)
         score = pred_aligns_sum / Gp.sum(dim=1) # (N,H,W), division is the |Gp(feaure)|
         score[~score.isfinite()] = 0    # Make div-by-zero things zero
-        return score    # (N,H,W), a score for each feature
+        if reduce:
+            return score.mean(dim=(1,2))
+        else:
+            return score    # (N,H,W), a score for each feature
 
 
 def get_cholec_scores(
-    baselines = ["patch", "quickshift", "watershed", "identity", "random", "sam"],
+    baselines = ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
     dataset = None,
     metric = None,
     N = 256,
@@ -158,16 +162,16 @@ def get_cholec_scores(
     all_baselines_scores = {}
     for item in tqdm(dataloader):
         for baseline in baselines:
-            if baseline == "patch": # patch
+            if baseline == "identity":
+                groups = IdentityGroups()
+            elif baseline == "random":
+                groups = RandomGroups(max_groups=8)
+            elif baseline == "patch": # patch
                 groups = PatchGroups(grid_size=(8,14), mode="grid")
             elif baseline == "quickshift": # quickshift
                 groups = QuickshiftGroups(max_groups=8)
             elif baseline == "watershed": # watershed
                 groups = WatershedGroups(max_groups=8)
-            elif baseline == "identity":
-                groups = IdentityGroups()
-            elif baseline == "random":
-                groups = RandomGroups(max_groups=8)
             elif baseline == "sam": # watershed
                 groups = SamGroups(max_groups=8)
             elif baseline == "ace":
@@ -189,9 +193,9 @@ def get_cholec_scores(
 
                 if baseline in all_baselines_scores.keys():
                     scores = all_baselines_scores[baseline]
-                    scores.append(score.mean(dim=(1,2)))
+                    scores.append(score) #.mean(dim=(1,2)))
                 else: 
-                    scores = [score.mean(dim=(1,2))]
+                    scores = [score] #.mean(dim=(1,2))]
                 all_baselines_scores[baseline] = scores
 
     

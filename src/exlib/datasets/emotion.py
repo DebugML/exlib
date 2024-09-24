@@ -18,8 +18,8 @@ from exlib.utils.emotion_helper import project_points_onto_axes, load_emotions
 from exlib.features.text import *
 
 
-# MODEL_REPO = "BrachioLab/roberta-base-go_emotions"
-MODEL_REPO = "mpressi/all_xlm-True"
+MODEL_REPO = "BrachioLab/roberta-base-go_emotions"
+# MODEL_REPO = "mpressi/all_xlm-True"
 DATASET_REPO = "BrachioLab/emotion"
 TOKENIZER_REPO = "roberta-base"
 
@@ -138,10 +138,11 @@ class EmotionFixScore(nn.Module):
                 mean_dist = self.mean_pairwise_dist(embeddings)
                 combined_dist = circumplex_dist*mean_dist
                 alignments.append(combined_dist)
+#         alignments = [self.tanh(np.exp(-a)) for a in alignments]
         alignments = [self.tanh(np.exp(-a)) for a in alignments]
         return alignments
     
-    def forward(self, group_masks:list, original_data:list, language="english"): # original_data is processed_word_list
+    def forward(self, group_masks:list, original_data:list, language="english", reduce=True): # original_data is processed_word_list
         #create groups
         groups = []
         for i in range(len(group_masks)):
@@ -150,10 +151,14 @@ class EmotionFixScore(nn.Module):
             if group != []:
                 groups.append(group)
         #print(groups)
-        return np.mean(self.calculate_group_alignment(groups, language))
+        scores = self.calculate_group_alignment(groups, language)
+        if reduce:
+            return np.mean(scores)
+        else:
+            return scores
 
 
-def get_emotion_scores(baselines = ['identity', 'random', 'word', 'phrase', 'sentence', 'archipelago', 'clustering'], utterances_path = 'utterances/emotion_test.pt'):
+def get_emotion_scores(baselines = ['identity', 'random', 'word', 'phrase', 'sentence', 'clustering', 'archipelago'], utterances_path = 'utterances/emotion_test.pt'):
     torch.manual_seed(1234)
     dataset = EmotionDataset("test")
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
@@ -194,6 +199,12 @@ def get_emotion_scores(baselines = ['identity', 'random', 'word', 'phrase', 'sen
                
             
             for example in range(len(word_lists)):
+                if baseline == 'identity':
+                    groups = IdentityGroups()
+                    masks = groups(word_lists[example])
+                elif baseline == 'random':
+                    groups = RandomGroups(distinct=distinct, scaling=scaling)
+                    masks = groups(word_lists[example])
                 if baseline == 'word':
                     groups = WordGroups(distinct=distinct, scaling=scaling)
                     masks = groups(word_lists[example])
@@ -203,11 +214,7 @@ def get_emotion_scores(baselines = ['identity', 'random', 'word', 'phrase', 'sen
                 elif baseline == 'sentence':
                     groups = SentenceGroups(distinct=distinct, scaling=scaling)
                     masks = groups(word_lists[example])
-                elif baseline == 'identity':
-                    groups = IdentityGroups()
-                    masks = groups(word_lists[example])
-                elif baseline == 'random':
-                    groups = RandomGroups(distinct=distinct, scaling=scaling)
+                elif baseline == 'clustering':
                     masks = groups(word_lists[example])
                 elif baseline == 'archipelago': # get score for each example with the already generated masks
                     masks = all_batch_masks[example]
