@@ -152,7 +152,7 @@ def get_supernova_scores(
                 elif baseline == '15':
                     BaselineGroup = SliceGroups(ngroups=15, window_size=100)
                 elif baseline == 'clustering':
-                    BaselineGroup = ClusterGroups(nclusters=7)
+                    BaselineGroup = ClusteringGroups(nclusters=7)
                 elif baseline == 'archipelago':
                     BaselineGroup = ArchipelagoGroups(feature_extractor=model, max_groups=9)
                 pred_groups = BaselineGroup(**batch)
