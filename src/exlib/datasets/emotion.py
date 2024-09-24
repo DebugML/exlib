@@ -15,16 +15,11 @@ sys.path.append("../src")
 import exlib
 # Baselines
 from exlib.utils.emotion_helper import project_points_onto_axes, load_emotions
+from exlib.features.text import *
 
-from exlib.features.text.identity import IdentityGroups
-from exlib.features.text.random import RandomGroups
-from exlib.features.text.word import WordGroups
-from exlib.features.text.phrase import PhraseGroups
-from exlib.features.text.sentence import SentenceGroups
-from exlib.features.text.clustering import ClusteringGroups
-from exlib.features.text.archipelago import WrappedModel, ArchipelagoGroups
 
 MODEL_REPO = "BrachioLab/roberta-base-go_emotions"
+# MODEL_REPO = "mpressi/all_xlm-True"
 DATASET_REPO = "BrachioLab/emotion"
 TOKENIZER_REPO = "roberta-base"
 
@@ -70,8 +65,9 @@ class EmotionDataset(torch.utils.data.Dataset):
 class EmotionClassifier(nn.Module):
     def __init__(self):
         super(EmotionClassifier, self).__init__()
-        self.model = AutoModel.from_pretrained(MODEL_REPO)
         torch.manual_seed(1234)
+        print(MODEL_REPO)
+        self.model = AutoModel.from_pretrained(MODEL_REPO)
         self.classifier = nn.Linear(768, 28)
 
     def forward(self, input_ids, attention_mask= None):
@@ -142,10 +138,11 @@ class EmotionFixScore(nn.Module):
                 mean_dist = self.mean_pairwise_dist(embeddings)
                 combined_dist = circumplex_dist*mean_dist
                 alignments.append(combined_dist)
+#         alignments = [self.tanh(np.exp(-a)) for a in alignments]
         alignments = [self.tanh(np.exp(-a)) for a in alignments]
         return alignments
     
-    def forward(self, group_masks:list, original_data:list, language="english"): # original_data is processed_word_list
+    def forward(self, group_masks:list, original_data:list, language="english", reduce=True): # original_data is processed_word_list
         #create groups
         groups = []
         for i in range(len(group_masks)):
@@ -154,10 +151,14 @@ class EmotionFixScore(nn.Module):
             if group != []:
                 groups.append(group)
         #print(groups)
-        return np.mean(self.calculate_group_alignment(groups, language))
+        scores = self.calculate_group_alignment(groups, language)
+        if reduce:
+            return np.mean(scores)
+        else:
+            return scores
 
 
-def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'random', 'archipelago', 'clustering']):
+def get_emotion_scores(baselines = ['identity', 'random', 'word', 'phrase', 'sentence', 'clustering', 'archipelago'], utterances_path = 'utterances/emotion_test.pt'):
     torch.manual_seed(1234)
     dataset = EmotionDataset("test")
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
@@ -176,7 +177,7 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'r
         
         baseline_scores = []
         if baseline == 'clustering':
-            utterances_path = 'utterances/emotion_test.pt'
+#             utterances_path = 'utterances/emotion_test.pt'
             if os.path.exists(utterances_path):
                 utterances = torch.load(utterances_path)
             else:
@@ -198,8 +199,12 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'r
                
             
             for example in range(len(word_lists)):
-#                 if baseline in ['word', 'phrase', 'sentence']:
-#                     masks = text_chunk(word_lists[example], baseline, return_mask=True)
+                if baseline == 'identity':
+                    groups = IdentityGroups()
+                    masks = groups(word_lists[example])
+                elif baseline == 'random':
+                    groups = RandomGroups(distinct=distinct, scaling=scaling)
+                    masks = groups(word_lists[example])
                 if baseline == 'word':
                     groups = WordGroups(distinct=distinct, scaling=scaling)
                     masks = groups(word_lists[example])
@@ -209,11 +214,7 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'r
                 elif baseline == 'sentence':
                     groups = SentenceGroups(distinct=distinct, scaling=scaling)
                     masks = groups(word_lists[example])
-                elif baseline == 'identity':
-                    groups = IdentityGroups()
-                    masks = groups(word_lists[example])
-                elif baseline == 'random':
-                    groups = RandomGroups(distinct=distinct, scaling=scaling)
+                elif baseline == 'clustering':
                     masks = groups(word_lists[example])
                 elif baseline == 'archipelago': # get score for each example with the already generated masks
                     masks = all_batch_masks[example]

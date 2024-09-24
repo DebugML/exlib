@@ -27,9 +27,9 @@ class KMeansTorch:
         labels = torch.argmin(distances, dim=1)
         return labels
 
-class ClusterGroups(nn.Module): 
+class ClusteringGroups(nn.Module): 
     def __init__(self, nclusters=7):
-        super(ClusterGroups, self).__init__()
+        super(ClusteringGroups, self).__init__()
         self.nclusters = nclusters
 
     def forward(self, labels=None, past_values=None, past_time_features=None, past_observed_mask=None):
