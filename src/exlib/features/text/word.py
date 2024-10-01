@@ -17,7 +17,7 @@ class WordGroups(nn.Module):
         r = torch.randperm(len(x))[:ngroups]
         masks = []
         for pos in r:
-            mask = torch.zeros(len(x))
+            mask = torch.zeros(len(x)).long()
             mask[pos] = 1
             masks.append(mask)
         return masks

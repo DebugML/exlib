@@ -17,7 +17,7 @@ class PhraseGroups(nn.Module):
         masks = []
         counter = 0
         for word_i in range(0, len(x), 3):
-            mask = torch.zeros(len(x))
+            mask = torch.zeros(len(x)).long()
             # each group is 3 consecutive words
             diff = len(x) - word_i
             if diff >= 3:

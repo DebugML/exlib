@@ -1,5 +1,5 @@
 import torch
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, AutoModelForSequenceClassification
 import numpy as np
 import pandas as pd
 import tqdm
@@ -8,6 +8,8 @@ from torch.utils.data import DataLoader
 from datasets import load_dataset
 import torch.nn as nn
 import sentence_transformers
+
+from pathlib import Path
 
 import os
 import sys
@@ -18,8 +20,8 @@ from exlib.utils.emotion_helper import project_points_onto_axes, load_emotions
 from exlib.features.text import *
 
 
-MODEL_REPO = "BrachioLab/roberta-base-go_emotions"
-# MODEL_REPO = "mpressi/all_xlm-True"
+# MODEL_REPO = "BrachioLab/roberta-base-go_emotions"
+MODEL_REPO = "SamLowe/roberta-base-go_emotions"
 DATASET_REPO = "BrachioLab/emotion"
 TOKENIZER_REPO = "roberta-base"
 
@@ -30,7 +32,10 @@ def load_data():
 
 
 def load_model():
-    return AutoModel.from_pretrained(MODEL_REPO)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = AutoModel.from_pretrained(MODEL_REPO)
+    model.to(device)
+    return model
 
 
 #go emotions dataset
@@ -64,17 +69,11 @@ class EmotionClassifier(nn.Module):
         super(EmotionClassifier, self).__init__()
         torch.manual_seed(1234)
         print(MODEL_REPO)
-        self.model = AutoModel.from_pretrained(MODEL_REPO)
-        self.classifier = nn.Linear(768, 28)
+        self.model = AutoModelForSequenceClassification.from_pretrained(MODEL_REPO)
 
     def forward(self, input_ids, attention_mask= None):
         outputs = self.model(input_ids, attention_mask)
-        last_hidden_state = outputs.last_hidden_state
-        cls_token = last_hidden_state[:, 0, :]
-        logits = self.classifier(cls_token)
-        outputs.__setattr__("logits", logits)
         return outputs
-
     
 class EmotionFixScore(nn.Module): 
     def __init__(self, model_name:str="all-mpnet-base-v2"): 
@@ -182,15 +181,20 @@ def get_emotion_scores(
                 utterances = torch.load(utterances_path)
             else:
                 utterances = [' '.join(dataset[i]['word_list']) for i in range(len(dataset))]
-                torch.save(utterances, utterances_path)
+
+                # Make the utterances directory if it does not exist
+                ut_path = Path(utterances_path)
+                ut_path.parent.mkdir(parents=True, exist_ok=True)
+
+                torch.save(utterances, str(ut_path))
             groups = ClusteringGroups(utterances, distinct=distinct, scaling=scaling)
         
         for i, batch in enumerate(tqdm(dataloader)):
             word_lists = batch['word_list']
             word_lists = list(map(list, zip(*word_lists)))
             processed_word_lists = []
-#             for word_list in word_lists:
-#                 processed_word_lists.append([word for word in word_list if word != ''])
+            for word_list in word_lists:
+                processed_word_lists.append([word for word in word_list if word != ''])
             
             if baseline == 'archipelago': # get masks by batch
                 backbone_model = model

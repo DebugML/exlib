@@ -194,7 +194,6 @@ def get_chestx_scores(
     if N < len(dataset):
         dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    print('dataloader', len(dataloader))
     all_baselines_scores = {}
     for item in tqdm(dataloader):
         for baseline in baselines:

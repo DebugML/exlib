@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from datasets import load_dataset
 import sentence_transformers
 
+from pathlib import Path
 import os
 import sys
 sys.path.append("../src")
@@ -100,8 +101,12 @@ class PolitenessFixScore(nn.Module):
         return all_centroids
 
     # input: list of words
-    def calculate_single_group_alignment(self, group:list, language:str="english"):
+    def calculate_single_group_alignment(
+        self,
+        group:list,
+        language:str="english",
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    ):
 
         #find max avg cos sim between word embeddings and centroids
         category_similarities = {}
@@ -185,7 +190,10 @@ def get_politeness_scores(
                 utterances = torch.load(utterances_path)
             else:
                 utterances = [' '.join(dataset[i]['word_list']) for i in range(len(dataset))]
-                torch.save(utterances, utterances_path)
+
+                ut_path = Path(utterances_path)
+                ut_path.parent.mkdir(parents=True, exist_ok=True)
+                torch.save(utterances, str(ut_path))
             groups = ClusteringGroups(utterances, distinct=distinct)
             
         for i, batch in enumerate(tqdm(dataloader)):
