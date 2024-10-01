@@ -16,9 +16,9 @@ import sys
 sys.path.append("../src")
 import exlib
 # Baselines
-from exlib.utils.emotion_helper import project_points_onto_axes, load_emotions
 from exlib.features.text import *
 
+from .emotion_helper import project_points_onto_axes, load_emotions
 
 # MODEL_REPO = "BrachioLab/roberta-base-go_emotions"
 MODEL_REPO = "SamLowe/roberta-base-go_emotions"
