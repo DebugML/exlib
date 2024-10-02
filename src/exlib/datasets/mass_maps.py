@@ -134,13 +134,13 @@ class MassMapsFixScore(nn.Module):
         self.cluster_threshold = cluster_threshold
         self.eps = eps
 
-    def forward(self, groups, x, reduce='sum'):
+    def forward(self, groups, x, reduce=True, return_dict=False):
         """
         group: (N, M, H, W) 0 or 1, or bool
         x: image (N, 1, H, W)
         return 
         """
-        assert reduce in ['sum', 'none']
+        # assert reduce in ['sum', 'none']
         # metric test
         groups = groups.bool().float() # if float then turned into bool
         masked_imgs = groups * x # (N, M, H, W)
@@ -170,9 +170,7 @@ class MassMapsFixScore(nn.Module):
         alignment = (purity[:,:,None,None] * groups).sum(1) / groups.sum(1)
         alignment[groups.sum(1) == 0] = 0
 
-        if reduce == 'sum':
-            return alignment # (N, H, W)
-        else: # none
+        if return_dict:
             return {
                 'alignment': alignment,
                 'purity': purity,
@@ -182,12 +180,17 @@ class MassMapsFixScore(nn.Module):
                 'p_cluster_': p_cluster_,
                 'p_other_': p_other_
             }
+        if reduce:
+            return alignment.mean(dim=(1,2)) # (N,)
+        else:
+            return alignment # (N, H, W)
+            
 
 
 def show_example(groups, X, img_idx=0, mode='contour'):
     assert mode in ['contour', 'dim']
-    massmaps_align = MassMapsFixScore()
-    alignment_results = massmaps_align(groups, X, reduce='none')
+    massmaps_fix_score = MassMapsFixScore()
+    alignment_results = massmaps_fix_score(groups, X, return_dict=True)
     
     m = groups.shape[1]
     cols = 8
@@ -268,7 +271,7 @@ def get_mass_maps_scores(
     val_dataset.set_format('torch', columns=['input', 'label'])
     test_dataset.set_format('torch', columns=['input', 'label'])
     
-    massmaps_align = MassMapsFixScore()
+    massmaps_fix_score = MassMapsFixScore()
 
     if N < len(test_dataset):
         test_dataset, _ = torch.utils.data.random_split(test_dataset, [N, len(test_dataset)-N])
@@ -324,8 +327,8 @@ def get_mass_maps_scores(
                 # print(baseline_name, 'groups', groups.shape)
     
                 # alignment
-                scores_batch = massmaps_align(groups, X)
-                scores_batch = scores_batch.flatten(1).cpu().numpy().tolist()
+                scores_batch = massmaps_fix_score(groups, X)
+                scores_batch = scores_batch.cpu().numpy().tolist()
 
                 if baseline_name in all_baselines_scores.keys():
                     scores = all_baselines_scores[baseline_name]

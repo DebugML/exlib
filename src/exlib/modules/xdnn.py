@@ -47,17 +47,25 @@ class XDNN(nn.Module):
             self.model.load_state_dict(new_state_dict)
 
         # prepare data
-        self.normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                            std=[0.229, 0.224, 0.225])
-        self.unnormalize = transforms.Compose([transforms.Normalize(mean = [ 0., 0., 0. ],
-                                                            std = [ 1/0.229, 1/0.224, 1/0.225 ]),
-                                        transforms.Normalize(mean = [ -0.485, -0.456, -0.406 ],
-                                                            std = [ 1., 1., 1. ])])
+        # self.normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+        #                                     std=[0.229, 0.224, 0.225])
+        # self.unnormalize = transforms.Compose([transforms.Normalize(mean = [ 0., 0., 0. ],
+        #                                                     std = [ 1/0.229, 1/0.224, 1/0.225 ]),
+        #                                 transforms.Normalize(mean = [ -0.485, -0.456, -0.406 ],
+        #                                                     std = [ 1., 1., 1. ])])
+    def normalize(self, x): 
+        # not using transforms.Normalize because it will mess up the input when it's masked
+        x_norm = (x + 1)/2
+        x_norm -= torch.tensor([0.485, 0.456, 0.406])[:, None, None].to(x.device)
+        x_norm /= torch.tensor([0.229, 0.224, 0.225])[:, None, None].to(x.device)
+        return x_norm
 
     def forward(self, x, t=None, return_groups=False, mini_batch_size=16, **kwargs):
         
         images = self.normalize(x).detach()
         outputs = self.model(images)
+        if t is None:
+            t = outputs.argmax(dim=-1)
 
         def get_attr_fn(x, t, model, normalize):
             with torch.enable_grad():

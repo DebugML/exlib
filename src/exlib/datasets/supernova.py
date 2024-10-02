@@ -65,7 +65,7 @@ class SupernovaFixScore(nn.Module):
         self.sigma = sigma
         self.nchunk = nchunk
 
-    def forward(self, groups, labels=None, past_values=None, past_time_features=None, past_observed_mask=None):
+    def forward(self, groups, labels=None, past_values=None, past_time_features=None, past_observed_mask=None, reduce=True):
         sigma, nchunk = self.sigma, self.nchunk
         t, wl, flux, err = past_time_features[:,:,0].to(device), past_time_features[:,:,1].to(device), past_values[:,:,0].to(device), past_values[:,:,1].to(device)
         unique_wl = torch.Tensor([3670.69, 4826.85, 6223.24, 7545.98, 8590.9, 9710.28]).to(device)
@@ -111,8 +111,12 @@ class SupernovaFixScore(nn.Module):
         alignment_score, _ = torch.max(alignment_score_wv, dim=2)
         alignment_score = torch.nan_to_num(alignment_score)
         scores_per_feature = (alignment_score.unsqueeze(2)*groups)
-        
-        return (scores_per_feature.sum(1)/torch.clamp(groups.sum(1), min=1e-5)).mean(dim=1)
+
+        scores = (scores_per_feature.sum(1)/torch.clamp(groups.sum(1), min=1e-5))
+        if reduce:
+            return scores.mean(dim=1)
+        else:
+            return scores
 
 def get_supernova_scores(
     baselines = ['identity', 'random', '5', '10', '15', 'clustering', 'archipelago'],

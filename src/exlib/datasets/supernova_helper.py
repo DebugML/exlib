@@ -232,6 +232,7 @@ def create_test_dataloader_raw(
 
     if config.has_labels:
         PREDICTION_INPUT_NAMES.append("labels")
+        # import pdb; pdb.set_trace()
         dataset = dataset.rename_column("label", "labels")
 
     if add_objid:
