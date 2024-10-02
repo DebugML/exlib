@@ -2,7 +2,8 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision
+from torch.utils.data import Subset, DataLoader
+import torchvision.models as tvm
 import torchvision.transforms as tfs
 from dataclasses import dataclass
 import datasets as hfds
@@ -79,7 +80,7 @@ class CholecModel(nn.Module, hfhub.PyTorchModelHubMixin):
         else:
             raise ValueError(f"Unrecognized task {task}")
 
-        self.seg_model = torchvision.models.segmentation.fcn_resnet50(num_classes=self.num_labels)
+        self.seg_model = tvm.segmentation.fcn_resnet50(num_classes=self.num_labels)
         self.preprocess = tfs.Compose([
             tfs.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
         ])
@@ -142,20 +143,18 @@ class CholecFixScore(nn.Module):
 
 def get_cholec_scores(
     baselines = ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
-    dataset = None,
-    metric = None,
-    N = 256,
+    N = None,
     batch_size = 8,
     device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
     torch.manual_seed(1234)
-    if dataset is None:
-        dataset = CholecDataset(split="test")
-    if metric is None:
-        metric = CholecFixScore()
-    if N < len(dataset):
-        dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    dataset = CholecDataset(split="test")
+    metric = CholecFixScore()
+
+    if N is not None:
+        dataset = Subset(dataset, torch.randperm(len(dataset))[:N].tolist())
+
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     resizer = tfs.Resize((180,320)) # Originally (360,640)
     

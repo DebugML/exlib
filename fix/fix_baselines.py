@@ -24,12 +24,12 @@ all_settings_baselines = {
 }
 
 all_settings_methods = {
-    # 'cholec': get_cholec_scores,
-    # 'chestx': get_chestx_scores,
-    # 'mass_maps': get_mass_maps_scores,
+    'cholec': get_cholec_scores,
+    'chestx': get_chestx_scores,
+    'mass_maps': get_mass_maps_scores,
     'supernova': get_supernova_scores,
-    # 'multilingual_politeness': get_politeness_scores,
-    # 'emotion': get_emotion_scores
+    'multilingual_politeness': get_politeness_scores,
+    'emotion': get_emotion_scores
 }
 
 

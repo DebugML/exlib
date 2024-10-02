@@ -2,9 +2,8 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision
+from torch.utils.data import Subset, DataLoader
 import torchvision.transforms as tfs
-import numpy as np
 from dataclasses import dataclass
 import torchxrayvision as xrv
 import datasets as hfds
@@ -179,21 +178,18 @@ class ChestXFixScore(nn.Module):
 
 def get_chestx_scores(
     baselines = ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
-    dataset = None,
-    metric = None,
     N = 256,
     batch_size = 16,
     device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
     torch.manual_seed(1234)
-    if dataset is None:
-        dataset = ChestXDataset(split="test")
-    if metric is None:
-        metric = ChestXFixScore()
+    dataset = ChestXDataset(split="test")
+    metric = ChestXFixScore()
 
-    if N < len(dataset):
-        dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    if N is not None:
+        dataset = Subset(dataset, torch.randperm(len(dataset))[:N].tolist())
+
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     all_baselines_scores = {}
     for item in tqdm(dataloader):
         for baseline in baselines:

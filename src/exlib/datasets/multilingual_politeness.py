@@ -97,7 +97,6 @@ class PolitenessFixScore(nn.Module):
                 centroids[c] = centroid
             assert len(categories) == len(centroids.keys())
             all_centroids[l] = centroids
-            print(f"Centroids for {l} created.")
         return all_centroids
 
     # input: list of words
@@ -157,7 +156,10 @@ class PolitenessFixScore(nn.Module):
 #         print(groups)
         scores = self.calculate_group_alignment(groups, language)
         if reduce:
-            return np.mean(scores)
+            if len(scores) == 0:
+                return 0.0
+            else:
+                return np.mean(scores)
         else:
             return scores
 
@@ -165,7 +167,9 @@ class PolitenessFixScore(nn.Module):
 def get_politeness_scores(
     baselines = ['identity', 'random', 'word', 'phrase', 'sentence', 'clustering', 'archipelago'],
     utterances_path = 'utterances/multilingual_politeness_test.pt',
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    distinct = 26,
+    scaling = 1.5
 ):
     torch.manual_seed(1234)
     dataset = PolitenessDataset("test")
@@ -175,9 +179,6 @@ def get_politeness_scores(
 
     metric = PolitenessFixScore()
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
-    
-    distinct = 26
-    scaling = 1.5
     
     all_baselines_scores = {}
     for baseline in baselines:
@@ -230,7 +231,6 @@ def get_politeness_scores(
                     masks = all_batch_masks[example]
 #                 masks = groups(word_lists[example])
                 score = metric(masks, word_lists[example])
-#                 print(score)
 
                 baseline_scores.append(score)
 #             break
