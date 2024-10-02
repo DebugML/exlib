@@ -189,13 +189,8 @@ class MassMapsFixScore(nn.Module):
 
 def show_example(groups, X, img_idx=0, mode='contour'):
     assert mode in ['contour', 'dim']
-<<<<<<< HEAD
     massmaps_fix_score = MassMapsFixScore()
     alignment_results = massmaps_fix_score(groups, X, return_dict=True)
-=======
-    massmaps_align = MassMapsFixScore()
-    alignment_results = massmaps_align(groups, X, reduce='none')
->>>>>>> 69dc89a390797a5de5e32f58ab5da32df3b124ea
     
     m = groups.shape[1]
     cols = 8
@@ -257,11 +252,7 @@ def map_plotter(image, mask, ax=plt, type='dim'):
 
 
 def get_mass_maps_scores(
-<<<<<<< HEAD
-    baselines = ['patch', 'quickshift', 'watershed', 'oracle', 'identity'],
-=======
     baselines = ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
->>>>>>> 5219cdd5ba37ffd62f167babca5a1ba6219a0c08
     subset = False,
     N = 1024,
     batch_size = 16,
