@@ -24,7 +24,7 @@ from collections import namedtuple, defaultdict
 import huggingface_hub as hfhub
 import sys
 
-from exlib.utils.supernova_helper import *
+from .supernova_helper import *
 
 import logging
 logging.getLogger().setLevel(logging.WARNING)

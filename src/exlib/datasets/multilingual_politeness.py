@@ -16,8 +16,8 @@ sys.path.append("../src")
 import exlib
 # Baselines
 from exlib.features.text import *
-from exlib.utils.politeness_helper import load_lexica
 
+from .politeness_helper import load_lexica
 
 DATASET_REPO = "BrachioLab/multilingual_politeness"
 MODEL_REPO = "BrachioLab/xlm-roberta-politeness"

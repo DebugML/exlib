@@ -189,8 +189,13 @@ class MassMapsFixScore(nn.Module):
 
 def show_example(groups, X, img_idx=0, mode='contour'):
     assert mode in ['contour', 'dim']
+<<<<<<< HEAD
     massmaps_fix_score = MassMapsFixScore()
     alignment_results = massmaps_fix_score(groups, X, return_dict=True)
+=======
+    massmaps_align = MassMapsFixScore()
+    alignment_results = massmaps_align(groups, X, reduce='none')
+>>>>>>> 69dc89a390797a5de5e32f58ab5da32df3b124ea
     
     m = groups.shape[1]
     cols = 8

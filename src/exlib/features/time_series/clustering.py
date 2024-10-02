@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from exlib.utils.supernova_helper import *
+import numpy as np
+# from exlib.utils.supernova_helper import *
 
 class KMeansTorch:
     def __init__(self, n_clusters=7, max_iter=100):
