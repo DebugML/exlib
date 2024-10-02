@@ -178,7 +178,7 @@ class ChestXFixScore(nn.Module):
 
 
 def get_chestx_scores(
-    baselines = ["patch", "quickshift", "watershed", "identity", "random", "sam"],
+    baselines = ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
     dataset = None,
     metric = None,
     N = 256,
@@ -194,20 +194,19 @@ def get_chestx_scores(
     if N < len(dataset):
         dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    print('dataloader', len(dataloader))
     all_baselines_scores = {}
     for item in tqdm(dataloader):
         for baseline in baselines:
-            if baseline == "patch": # patch
+            if baseline == "identity":
+                groups = IdentityGroups()
+            elif baseline == "random":
+                groups = RandomGroups(max_groups=20)
+            elif baseline == "patch": # patch
                 groups = PatchGroups(grid_size=(8,8), mode="grid")
             elif baseline == "quickshift": # quickshift
                 groups = QuickshiftGroups(max_groups=20)
             elif baseline == "watershed": # watershed
                 groups = WatershedGroups(max_groups=20)
-            elif baseline == "identity":
-                groups = IdentityGroups()
-            elif baseline == "random":
-                groups = RandomGroups(max_groups=20)
             elif baseline == "sam":
                 groups = SamGroups(max_groups=20)
             elif baseline == "ace":   # ACE

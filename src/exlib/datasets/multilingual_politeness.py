@@ -9,6 +9,8 @@ from torch.utils.data import DataLoader
 from datasets import load_dataset
 import sentence_transformers
 
+from pathlib import Path
+import os
 import sys
 sys.path.append("../src")
 import exlib
@@ -28,10 +30,7 @@ def load_data():
 
 
 def load_model():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = XLMRobertaForSequenceClassification.from_pretrained(MODEL_REPO)
-    model.to(device)
-    return model
+    return XLMRobertaForSequenceClassification.from_pretrained(MODEL_REPO)
 
 
 class PolitenessDataset(torch.utils.data.Dataset):
@@ -102,8 +101,12 @@ class PolitenessFixScore(nn.Module):
         return all_centroids
 
     # input: list of words
-    def calculate_single_group_alignment(self, group:list, language:str="english"):
+    def calculate_single_group_alignment(
+        self,
+        group:list,
+        language:str="english",
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    ):
 
         #find max avg cos sim between word embeddings and centroids
         category_similarities = {}
@@ -159,30 +162,39 @@ class PolitenessFixScore(nn.Module):
             return scores
 
 
-def get_politeness_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'random', 'archipelago', 'clustering']):
+def get_politeness_scores(
+    baselines = ['identity', 'random', 'word', 'phrase', 'sentence', 'clustering', 'archipelago'],
+    utterances_path = 'utterances/multilingual_politeness_test.pt',
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+):
     torch.manual_seed(1234)
     dataset = PolitenessDataset("test")
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = PolitenessClassifier()
     model.to(device)
     model.eval()
 
     metric = PolitenessFixScore()
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
-    all_baselines_scores = {}
     
+    distinct = 26
+    scaling = 1.5
+    
+    all_baselines_scores = {}
     for baseline in baselines:
         print(f"---- {baseline} Level Groups ----")
         baseline_scores = []
         
         if baseline == 'clustering':
-            utterances_path = 'utterances/multilingual_politeness_test.pt'
+#             utterances_path = 'utterances/multilingual_politeness_test.pt'
             if os.path.exists(utterances_path):
                 utterances = torch.load(utterances_path)
             else:
                 utterances = [' '.join(dataset[i]['word_list']) for i in range(len(dataset))]
-                torch.save(utterances, utterances_path)
-            groups = ClusteringGroups(utterances, distinct=26)
+
+                ut_path = Path(utterances_path)
+                ut_path.parent.mkdir(parents=True, exist_ok=True)
+                torch.save(utterances, str(ut_path))
+            groups = ClusteringGroups(utterances, distinct=distinct)
             
         for i, batch in enumerate(tqdm(dataloader)):
             word_lists = batch['word_list']
@@ -193,17 +205,26 @@ def get_politeness_scores(baselines = ['word', 'phrase', 'sentence', 'identity',
             
             if baseline == 'archipelago': # get masks by batch
                 backbone_model = model.model #load_model()
-                groups = ArchipelagoGroups(backbone_model, 26)
+                groups = ArchipelagoGroups(backbone_model, distinct)
                 all_batch_masks = groups(batch)
             
             for example in range(len(processed_word_lists)):
-                if baseline in ['word', 'phrase', 'sentence']:
-                    masks = text_chunk(word_lists[example], baseline, return_mask=True)
-                elif baseline == 'identity':
+                if baseline == 'identity':
                     groups = IdentityGroups()
                     masks = groups(word_lists[example])
                 elif baseline == 'random':
-                    groups = RandomGroups(distinct=26)
+                    groups = RandomGroups(distinct=distinct)
+                    masks = groups(word_lists[example])
+                elif baseline == 'word':
+                    groups = WordGroups(distinct=distinct, scaling=scaling)
+                    masks = groups(word_lists[example])
+                elif baseline == 'phrase':
+                    groups = PhraseGroups(distinct=distinct, scaling=scaling)
+                    masks = groups(word_lists[example])
+                elif baseline == 'sentence':
+                    groups = SentenceGroups(distinct=distinct, scaling=scaling)
+                    masks = groups(word_lists[example])
+                elif baseline == 'clustering':
                     masks = groups(word_lists[example])
                 elif baseline == 'archipelago': # get score for each example with the already generated masks
                     masks = all_batch_masks[example]

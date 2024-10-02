@@ -22,4 +22,10 @@ dependencies:
   - scikit-image
   - pip
   - pip:
+<<<<<<< HEAD
     - git+https://github.com/BrachioLab/pytorch-grad-cam.git
+=======
+    - git+https://github.com/fallcat/pytorch-grad-cam.git
+  - bertopic
+  - jsonlines
+>>>>>>> 5219cdd5ba37ffd62f167babca5a1ba6219a0c08

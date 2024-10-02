@@ -6,12 +6,12 @@ import torch
 
 sys.path.append("../src")
 import exlib
-# from exlib.datasets.cholec import get_cholec_scores
-# from exlib.datasets.chestx import get_chestx_scores
-# from exlib.datasets.mass_maps import get_mass_maps_scores
+from exlib.datasets.cholec import get_cholec_scores
+from exlib.datasets.chestx import get_chestx_scores
+from exlib.datasets.mass_maps import get_mass_maps_scores
 from exlib.datasets.supernova import get_supernova_scores
-# from exlib.datasets.multilingual_politeness import get_politeness_scores
-# from exlib.datasets.emotion import get_emotion_scores   
+from exlib.datasets.multilingual_politeness import get_politeness_scores
+from exlib.datasets.emotion import get_emotion_scores   
 
 
 all_settings_baselines = {
@@ -24,12 +24,12 @@ all_settings_baselines = {
 }
 
 all_settings_methods = {
-    # 'cholec': get_cholec_scores,
-    # 'chestx': get_chestx_scores,
-    # 'mass_maps': get_mass_maps_scores,
+    'cholec': get_cholec_scores,
+    'chestx': get_chestx_scores,
+    'mass_maps': get_mass_maps_scores,
     'supernova': get_supernova_scores,
-    # 'multilingual_politeness': get_politeness_scores,
-    # 'emotion': get_emotion_scores
+    'multilingual_politeness': get_politeness_scores,
+    'emotion': get_emotion_scores
 }
 
 

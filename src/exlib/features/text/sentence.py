@@ -22,7 +22,7 @@ class SentenceGroups(nn.Module):
                 break
             if new_sentence:
                 new_sentence = False
-                mask = torch.zeros(len(x))
+                mask = torch.zeros(len(x)).long()
             mask[word_i] = 1
             if x[word_i][-1] in [".", "!", "?"]:
                 masks.append(mask)

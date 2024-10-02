@@ -1,5 +1,5 @@
 import torch
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, AutoModelForSequenceClassification
 import numpy as np
 import pandas as pd
 import tqdm
@@ -9,22 +9,19 @@ from datasets import load_dataset
 import torch.nn as nn
 import sentence_transformers
 
+from pathlib import Path
+
 import os
 import sys
 sys.path.append("../src")
 import exlib
 # Baselines
 from exlib.utils.emotion_helper import project_points_onto_axes, load_emotions
+from exlib.features.text import *
 
-from exlib.features.text.identity import IdentityGroups
-from exlib.features.text.random import RandomGroups
-from exlib.features.text.word import WordGroups
-from exlib.features.text.phrase import PhraseGroups
-from exlib.features.text.sentence import SentenceGroups
-from exlib.features.text.clustering import ClusteringGroups
-from exlib.features.text.archipelago import WrappedModel, ArchipelagoGroups
 
-MODEL_REPO = "BrachioLab/roberta-base-go_emotions"
+# MODEL_REPO = "BrachioLab/roberta-base-go_emotions"
+MODEL_REPO = "SamLowe/roberta-base-go_emotions"
 DATASET_REPO = "BrachioLab/emotion"
 TOKENIZER_REPO = "roberta-base"
 
@@ -70,18 +67,13 @@ class EmotionDataset(torch.utils.data.Dataset):
 class EmotionClassifier(nn.Module):
     def __init__(self):
         super(EmotionClassifier, self).__init__()
-        self.model = AutoModel.from_pretrained(MODEL_REPO)
         torch.manual_seed(1234)
-        self.classifier = nn.Linear(768, 28)
+        print(MODEL_REPO)
+        self.model = AutoModelForSequenceClassification.from_pretrained(MODEL_REPO)
 
     def forward(self, input_ids, attention_mask= None):
         outputs = self.model(input_ids, attention_mask)
-        last_hidden_state = outputs.last_hidden_state
-        cls_token = last_hidden_state[:, 0, :]
-        logits = self.classifier(cls_token)
-        outputs.__setattr__("logits", logits)
         return outputs
-
     
 class EmotionFixScore(nn.Module): 
     def __init__(self, model_name:str="all-mpnet-base-v2"): 
@@ -142,6 +134,7 @@ class EmotionFixScore(nn.Module):
                 mean_dist = self.mean_pairwise_dist(embeddings)
                 combined_dist = circumplex_dist*mean_dist
                 alignments.append(combined_dist)
+#         alignments = [self.tanh(np.exp(-a)) for a in alignments]
         alignments = [self.tanh(np.exp(-a)) for a in alignments]
         return alignments
     
@@ -161,11 +154,14 @@ class EmotionFixScore(nn.Module):
             return scores
 
 
-def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'random', 'archipelago', 'clustering']):
+def get_emotion_scores(
+    baselines = ['identity', 'random', 'word', 'phrase', 'sentence', 'clustering', 'archipelago'],
+    utterances_path = 'utterances/emotion_test.pt',
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+):
     torch.manual_seed(1234)
     dataset = EmotionDataset("test")
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = EmotionClassifier()
     model.to(device)
     model.eval()
@@ -180,20 +176,25 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'r
         
         baseline_scores = []
         if baseline == 'clustering':
-            utterances_path = 'utterances/emotion_test.pt'
+#             utterances_path = 'utterances/emotion_test.pt'
             if os.path.exists(utterances_path):
                 utterances = torch.load(utterances_path)
             else:
                 utterances = [' '.join(dataset[i]['word_list']) for i in range(len(dataset))]
-                torch.save(utterances, utterances_path)
+
+                # Make the utterances directory if it does not exist
+                ut_path = Path(utterances_path)
+                ut_path.parent.mkdir(parents=True, exist_ok=True)
+
+                torch.save(utterances, str(ut_path))
             groups = ClusteringGroups(utterances, distinct=distinct, scaling=scaling)
         
         for i, batch in enumerate(tqdm(dataloader)):
             word_lists = batch['word_list']
             word_lists = list(map(list, zip(*word_lists)))
             processed_word_lists = []
-#             for word_list in word_lists:
-#                 processed_word_lists.append([word for word in word_list if word != ''])
+            for word_list in word_lists:
+                processed_word_lists.append([word for word in word_list if word != ''])
             
             if baseline == 'archipelago': # get masks by batch
                 backbone_model = model
@@ -202,8 +203,12 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'r
                
             
             for example in range(len(word_lists)):
-#                 if baseline in ['word', 'phrase', 'sentence']:
-#                     masks = text_chunk(word_lists[example], baseline, return_mask=True)
+                if baseline == 'identity':
+                    groups = IdentityGroups()
+                    masks = groups(word_lists[example])
+                elif baseline == 'random':
+                    groups = RandomGroups(distinct=distinct, scaling=scaling)
+                    masks = groups(word_lists[example])
                 if baseline == 'word':
                     groups = WordGroups(distinct=distinct, scaling=scaling)
                     masks = groups(word_lists[example])
@@ -213,11 +218,7 @@ def get_emotion_scores(baselines = ['word', 'phrase', 'sentence', 'identity', 'r
                 elif baseline == 'sentence':
                     groups = SentenceGroups(distinct=distinct, scaling=scaling)
                     masks = groups(word_lists[example])
-                elif baseline == 'identity':
-                    groups = IdentityGroups()
-                    masks = groups(word_lists[example])
-                elif baseline == 'random':
-                    groups = RandomGroups(distinct=distinct, scaling=scaling)
+                elif baseline == 'clustering':
                     masks = groups(word_lists[example])
                 elif baseline == 'archipelago': # get score for each example with the already generated masks
                     masks = all_batch_masks[example]

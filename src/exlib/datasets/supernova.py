@@ -14,11 +14,7 @@ import numpy as np
 from tqdm.auto import tqdm
 
 # Baselines
-from exlib.features.time_series.identity import IdentityGroups
-from exlib.features.time_series.random import RandomGroups
-from exlib.features.time_series.slice import SliceGroups
-from exlib.features.time_series.clustering import ClusterGroups
-from exlib.features.time_series.archipelago import ArchipelagoGroups
+from exlib.features.time_series import *
 
 from exlib.explainers.archipelago import ArchipelagoTimeSeriesCls
 from datasets import load_dataset
@@ -151,7 +147,6 @@ def get_supernova_scores(
             for baseline in baselines:
                 if baseline == 'identity':
                     BaselineGroup = IdentityGroups(ngroups=1, window_size=100)
-                    
                 elif baseline == 'random':
                     BaselineGroup = RandomGroups(scaling = 1.5, distinct = 6, window_size=100)
                 elif baseline == '5':
@@ -161,7 +156,7 @@ def get_supernova_scores(
                 elif baseline == '15':
                     BaselineGroup = SliceGroups(ngroups=15, window_size=100)
                 elif baseline == 'clustering':
-                    BaselineGroup = ClusterGroups(nclusters=7)
+                    BaselineGroup = ClusteringGroups(nclusters=7)
                 elif baseline == 'archipelago':
                     BaselineGroup = ArchipelagoGroups(feature_extractor=model, max_groups=9)
                 pred_groups = BaselineGroup(**batch)

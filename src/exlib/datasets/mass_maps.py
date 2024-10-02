@@ -252,7 +252,11 @@ def map_plotter(image, mask, ax=plt, type='dim'):
 
 
 def get_mass_maps_scores(
+<<<<<<< HEAD
     baselines = ['patch', 'quickshift', 'watershed', 'oracle', 'identity'],
+=======
+    baselines = ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
+>>>>>>> 5219cdd5ba37ffd62f167babca5a1ba6219a0c08
     subset = False,
     N = 1024,
     batch_size = 16,

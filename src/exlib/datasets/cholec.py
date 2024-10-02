@@ -141,7 +141,7 @@ class CholecFixScore(nn.Module):
 
 
 def get_cholec_scores(
-    baselines = ["patch", "quickshift", "watershed", "identity", "random", "sam"],
+    baselines = ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
     dataset = None,
     metric = None,
     N = 256,
@@ -162,16 +162,16 @@ def get_cholec_scores(
     all_baselines_scores = {}
     for item in tqdm(dataloader):
         for baseline in baselines:
-            if baseline == "patch": # patch
+            if baseline == "identity":
+                groups = IdentityGroups()
+            elif baseline == "random":
+                groups = RandomGroups(max_groups=8)
+            elif baseline == "patch": # patch
                 groups = PatchGroups(grid_size=(8,14), mode="grid")
             elif baseline == "quickshift": # quickshift
                 groups = QuickshiftGroups(max_groups=8)
             elif baseline == "watershed": # watershed
                 groups = WatershedGroups(max_groups=8)
-            elif baseline == "identity":
-                groups = IdentityGroups()
-            elif baseline == "random":
-                groups = RandomGroups(max_groups=8)
             elif baseline == "sam": # watershed
                 groups = SamGroups(max_groups=8)
             elif baseline == "ace":
