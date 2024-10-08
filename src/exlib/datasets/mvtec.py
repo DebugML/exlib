@@ -1,6 +1,3 @@
-import os
-from glob import glob
-
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -10,7 +7,7 @@ import datasets as hfds
 HF_DATA_REPO = "BrachioLab/mvtec-ad"
 
 class MVTecDataset(Dataset):
-    
+
     categories = [
         "bottle",
         "cable",
@@ -36,11 +33,9 @@ class MVTecDataset(Dataset):
         image_size: int = 256,
         hf_data_repo = HF_DATA_REPO,
     ):
-        self.category = category
         self.split = split
-        self.dataset = hfds.load_dataset(hf_data_repo, split=category + "." + split)
+        self.dataset = hfds.load_dataset(hf_data_repo, split=(category + "." + split))
         self.dataset.set_format("torch")
-        self.image_size = image_size
         self.resize = transforms.Resize(image_size)
 
     def __len__(self):
@@ -60,7 +55,7 @@ class MVTecDataset(Dataset):
         else:
             return {
                 "image": image,
-                "mask": self.resize(item["mask"]).long(),
+                "mask": (self.resize(item["mask"]) > 0).long(),
                 "label": item["label"]
             }
 
