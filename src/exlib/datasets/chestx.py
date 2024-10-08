@@ -1,25 +1,26 @@
-import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision
+from torch.utils.data import Dataset, Subset, DataLoader
 import torchvision.transforms as tfs
-import numpy as np
 from dataclasses import dataclass
 import torchxrayvision as xrv
 import datasets as hfds
 import huggingface_hub as hfhub
 
-import sys
-from tqdm import tqdm
-sys.path.append("../src")
-import exlib
-from exlib.features.vision import *
-
 
 HF_DATA_REPO = "BrachioLab/chestx"
 
-class ChestXDataset(torch.utils.data.Dataset):
+
+class ChestXDataset(Dataset):
+    """
+    The ChestX-ray dataset adapted from torchxrayvision's curation of the GoogleNIH dataset.
+    The structure segmentations are also derived using torchxrayvision's off-the-shelf models.
+
+    This dataset is hosted on HuggingFace, see:
+    https://huggingface.co/datasets/BrachioLab/chestx
+    """
+
     pathology_names = [
         "Atelectasis",
         "Cardiomegaly",
@@ -60,6 +61,12 @@ class ChestXDataset(torch.utils.data.Dataset):
         hf_data_repo: str = HF_DATA_REPO,
         image_size: int = 224,
     ):
+        r"""
+        Args:
+            split: Either "train" or "test"
+            hf_data_repo: Where the dataset is hosted on HuggingFace
+            image_size: The square image size
+        """
         self.dataset = hfds.load_dataset(hf_data_repo, split=split)
         self.dataset.set_format("torch")
         self.image_size = image_size
@@ -98,30 +105,35 @@ class ChestXPathologyModel(nn.Module, hfhub.PyTorchModelHubMixin):
         self.xrv_model = xrv.models.DenseNet(weights="densenet121-res224-nih") # NIH chest X-ray8
 
     def forward(self, x: torch.FloatTensor):
-        """ x: (N,C,224,224) with values in [0,1], with either C=1 or C=2 channels """
+        """
+        Args:
+            x: (N,C,224,224) with values in [0,1], with either C=1 or C=2 channels
+        """
 
         x = x * 2048 - 1024 # The xrv model requires some brazingo scaling
         out = self.xrv_model(x)
-
-        """ The XRV model outputs 18 pathology labels in the following order:
-            ['Atelectasis',
-             'Consolidation',
-             'Infiltration',
-             'Pneumothorax',
-             'Edema',
-             'Emphysema',
-             'Fibrosis',
-             'Effusion',
-             'Pneumonia',
-             'Pleural_Thickening',
-             'Cardiomegaly',
-             'Nodule',
-             'Mass',
-             'Hernia',
-             '',
-             '',
-             '',
-             '']
+        """
+        The torchxrayvision model outputs 18 pathology labels in the following order:
+            [
+                'Atelectasis',
+                 'Consolidation',
+                 'Infiltration',
+                 'Pneumothorax',
+                 'Edema',
+                 'Emphysema',
+                 'Fibrosis',
+                 'Effusion',
+                 'Pneumonia',
+                 'Pleural_Thickening',
+                 'Cardiomegaly',
+                 'Nodule',
+                 'Mass',
+                 'Hernia',
+                 '',
+                 '',
+                 '',
+                 ''
+            ]
         ... so we need to sort it to match our ordering
         """
         pathol_idxs = [0, 10, 1, 4, 7, 5, 6, 13, 2, 12, 11, 9, 8, 3]
@@ -129,6 +141,9 @@ class ChestXPathologyModel(nn.Module, hfhub.PyTorchModelHubMixin):
 
 
 class ChestXFixScore(nn.Module):
+    """
+    The FIX score for ChestXDataset, where the explicit expert features are known.
+    """
     def __init__(self):
         super().__init__()
 
@@ -177,44 +192,67 @@ class ChestXFixScore(nn.Module):
             return score    # (N,H,W), a score for each feature
 
 
+r"""
+Some baselines for running the ChestX FIX score
+"""
+
+
+_all_chestx_baselines = [
+    'identity',
+    'random',
+    'patch',
+    'quickshift',
+    'watershed',
+    'sam',
+    'ace',
+    'craft',
+    'archipelago'
+]
+
+
 def get_chestx_scores(
-    baselines = ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
-    dataset = None,
-    metric = None,
-    N = 256,
+    baselines = _all_chestx_baselines,
+    num_todo = 256,
     batch_size = 16,
     device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
-    torch.manual_seed(1234)
-    if dataset is None:
-        dataset = ChestXDataset(split="test")
-    if metric is None:
-        metric = ChestXFixScore()
 
-    if N < len(dataset):
-        dataset, _ = torch.utils.data.random_split(dataset, [N, len(dataset)-N])
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    from tqdm import tqdm
+    import sys
+    sys.path.append("../..")
+    import exlib.features.vision as xfv
+
+    torch.manual_seed(1234)
+    dataset = ChestXDataset(split="test")
+    metric = ChestXFixScore()
+
+    if num_todo is not None:
+        dataset = Subset(dataset, torch.randperm(len(dataset))[:num_todo].tolist())
+
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     all_baselines_scores = {}
     for item in tqdm(dataloader):
         for baseline in baselines:
             if baseline == "identity":
-                groups = IdentityGroups()
+                groups = xfv.IdentityGroups()
             elif baseline == "random":
-                groups = RandomGroups(max_groups=20)
+                groups = xfv.RandomGroups(max_groups=20)
             elif baseline == "patch": # patch
-                groups = PatchGroups(grid_size=(8,8), mode="grid")
+                groups = xfv.PatchGroups(grid_size=(8,8), mode="grid")
             elif baseline == "quickshift": # quickshift
-                groups = QuickshiftGroups(max_groups=20)
+                groups = xfv.QuickshiftGroups(max_groups=20)
             elif baseline == "watershed": # watershed
-                groups = WatershedGroups(max_groups=20)
+                groups = xfv.WatershedGroups(max_groups=20)
             elif baseline == "sam":
-                groups = SamGroups(max_groups=20)
+                groups = xfv.SamGroups(max_groups=20)
             elif baseline == "ace":   # ACE
-                groups = NeuralQuickshiftGroups(max_groups=20)
+                groups = xfv.NeuralQuickshiftGroups(max_groups=20)
             elif baseline == "craft":
-                groups = CraftGroups(max_groups=20)
+                groups = xfv.CraftGroups(max_groups=20)
             elif baseline == "archipelago":
-                groups = ArchipelagoGroups(max_groups=20)
+                groups = xfv.ArchipelagoGroups(max_groups=20)
+            else:
+                raise ValueError(f"Unknown baseline {baseline}")
 
             groups.eval().to(device)
 
@@ -239,7 +277,6 @@ def get_chestx_scores(
 
     for baseline in baselines:
         scores = torch.cat(all_baselines_scores[baseline])
-        # print(f"Avg alignment of {baseline} features: {scores.mean():.4f}")
         all_baselines_scores[baseline] = scores
 
     return all_baselines_scores

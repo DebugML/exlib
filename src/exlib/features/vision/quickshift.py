@@ -1,12 +1,11 @@
-from typing import Union
+from typing import Callable
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
-import numpy as np
 
-import skimage.segmentation as skseg
-import sklearn.cluster as skclust
+import skimage
+import sklearn
 
 from .common import relabel_segments_by_proximity
 
@@ -32,7 +31,7 @@ def my_quickshift(
         raise ValueError(f"Invalid image shape: {image.shape}")
 
     # quickshift returns a (H,W) of numpy integers
-    segs = skseg.quickshift(
+    segs = skimage.segmentation.quickshift(
         image_np,
         kernel_size = kernel_size,
         max_dist = max_dist,
@@ -97,7 +96,7 @@ class NeuralQuickshiftGroups(nn.Module):
         max_dist: float = 50.,
         sigma = 10.,
         flat: bool = False,
-        feature_extractor: Union[nn.Module, str] = "resnet18"
+        feature_extractor: str | Callable = "resnet18"
     ):
         super().__init__()
         self.kernel_size = kernel_size
@@ -137,7 +136,7 @@ class NeuralQuickshiftGroups(nn.Module):
 
         features = self.feature_extractor(masked_images)
 
-        kmeans = skclust.KMeans(n_clusters=self.max_groups).fit(features.detach().cpu().numpy())
+        kmeans = sklearn.cluster.KMeans(n_clusters=self.max_groups).fit(features.detach().cpu().numpy())
         labels = torch.tensor(kmeans.labels_).to(device)
 
         regrouped_segs = torch.zeros(H, W).to(device)

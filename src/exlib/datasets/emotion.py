@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import tqdm
 from tqdm import tqdm
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from datasets import load_dataset
 import torch.nn as nn
 import sentence_transformers
@@ -75,6 +75,7 @@ class EmotionClassifier(nn.Module):
         outputs = self.model(input_ids, attention_mask)
         return outputs
     
+
 class EmotionFixScore(nn.Module): 
     def __init__(self, model_name:str="all-mpnet-base-v2"): 
         super().__init__()
@@ -128,6 +129,7 @@ class EmotionFixScore(nn.Module):
         for group in groups:
             embeddings = self.model.encode(group)
             circumplex_dist = self.distance_from_circumplex(embeddings)
+
             if(len(embeddings) == 1): 
                 alignments.append(circumplex_dist)
             else:
@@ -149,7 +151,10 @@ class EmotionFixScore(nn.Module):
         #print(groups)
         scores = self.calculate_group_alignment(groups, language)
         if reduce:
-            return np.mean(scores)
+            if len(scores) == 0:
+                return 0.0
+            else:
+                return np.mean(scores)
         else:
             return scores
 
@@ -157,19 +162,22 @@ class EmotionFixScore(nn.Module):
 def get_emotion_scores(
     baselines = ['identity', 'random', 'word', 'phrase', 'sentence', 'clustering', 'archipelago'],
     utterances_path = 'utterances/emotion_test.pt',
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    distinct = 4,
+    scaling = 1.5,
+    batch_size = 4,
+    N = None,
 ):
     torch.manual_seed(1234)
     dataset = EmotionDataset("test")
-    dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
-    model = EmotionClassifier()
-    model.to(device)
-    model.eval()
+
+    if N is not None:
+        dataset = Subset(dataset, torch.randperm(len(dataset))[:N].tolist())
+
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    model = EmotionClassifier().to(device).eval()
     metric = EmotionFixScore()
 
-    distinct = 4
-    scaling = 1.5
-    
     all_baselines_scores = {}
     for baseline in baselines:
         #print(f"---- {baseline} Level Groups ----")
@@ -190,8 +198,10 @@ def get_emotion_scores(
             groups = ClusteringGroups(utterances, distinct=distinct, scaling=scaling)
         
         for i, batch in enumerate(tqdm(dataloader)):
+
             word_lists = batch['word_list']
             word_lists = list(map(list, zip(*word_lists)))
+
             processed_word_lists = []
             for word_list in word_lists:
                 processed_word_lists.append([word for word in word_list if word != ''])
@@ -224,15 +234,10 @@ def get_emotion_scores(
                     masks = all_batch_masks[example]
                 #print(word_lists[example])
                 score = metric(masks, word_lists[example])
-                #print(score)
 
                 baseline_scores.append(score)
-#             if i > 50:
-#                 break
-        
-#         print(baseline_scores)    
+
         baseline_scores = torch.tensor(baseline_scores)
         all_baselines_scores[baseline] = baseline_scores
     
-    #print(all_baselines_scores)
     return all_baselines_scores

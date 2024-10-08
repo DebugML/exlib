@@ -120,15 +120,11 @@ class SupernovaFixScore(nn.Module):
 
 def get_supernova_scores(
     baselines = ['identity', 'random', '5', '10', '15', 'clustering', 'archipelago'],
-    dataset = None,
-    metric = None,
     batch_size = 5,
 ):
     torch.manual_seed(1234)
-    if dataset is None:
-        dataset = SupernovaDataset(data_dir = "BrachioLab/supernova-timeseries", split="test")
-    if metric is None:
-        metric = SupernovaFixScore(sigma=1, nchunk=7)
+    dataset = SupernovaDataset(data_dir = "BrachioLab/supernova-timeseries", split="test")
+    metric = SupernovaFixScore(sigma=1, nchunk=7)
     test_dataloader = create_test_dataloader_raw(
         dataset=dataset,
         batch_size=5,

@@ -1,4 +1,3 @@
-from typing import Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,8 +6,8 @@ import torch.nn.functional as F
 class PatchGroups(nn.Module):
     def __init__(
         self,
-        patch_size: Union[int, tuple[int,int]] = (32,32),
-        grid_size: Union[int, tuple[int,int]] = (8,8),
+        patch_size: int | tuple[int,int] = (32,32),
+        grid_size: int | tuple[int,int] = (8,8),
         flat: bool = False,
         mode: str = "grid"
     ):

@@ -4,9 +4,8 @@ import torchvision
 import timm
 
 import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent.parent))
-from explainers.libs.craft.craft_torch import Craft
+sys.path.append("../../..")
+from exlib.explainers.libs.craft.craft_torch import Craft
 
 class CraftGroups(nn.Module):
     def __init__(
