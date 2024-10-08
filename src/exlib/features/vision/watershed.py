@@ -1,10 +1,9 @@
 import torch
 import torch.nn as nn
-import numpy as np
-import skimage.segmentation as seg
-from scipy import ndimage as ndi
-import skimage.feature as feat
 import torch.nn.functional as F
+import numpy as np
+import skimage
+from scipy import ndimage as ndi
 
 from .common import relabel_segments_by_proximity
 
@@ -35,17 +34,16 @@ class WatershedGroups(nn.Module):
             image = (image - image.min()) / (image.max() - image.min())
         image = (image.mean(dim=0).numpy() * 255).astype(np.uint8)
         distance = ndi.distance_transform_edt(image)
-        coords = feat.peak_local_max(
+        coords = skimage.feature.peak_local_max(
             distance,
             min_distance=self.min_dist,
             footprint=np.ones((self.footprint_size,self.footprint_size)),
             labels=image,
         )
-        # coords = feat.peak_local_max(distance, min_distance=10, labels=image)
         mask = np.zeros(distance.shape, dtype=bool)
         mask[tuple(coords.T)] = True
         markers, _ = ndi.label(mask)
-        segs = seg.watershed(
+        segs = skimage.segmentation.watershed(
             -distance,
             markers,
             mask = image,

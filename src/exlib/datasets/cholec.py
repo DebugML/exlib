@@ -1,23 +1,26 @@
-import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Subset, DataLoader
+from torch.utils.data import Dataset, Subset, DataLoader
 import torchvision.models as tvm
 import torchvision.transforms as tfs
 from dataclasses import dataclass
 import datasets as hfds
 import huggingface_hub as hfhub
 
-import sys
-from tqdm import tqdm
-sys.path.append("../src")
-import exlib
-from exlib.features.vision import *
 
 HF_DATA_REPO = "BrachioLab/cholecystectomy_segmentation"
 
-class CholecDataset(torch.utils.data.Dataset):
+
+class CholecDataset(Dataset):
+    """
+    The cholecystectomy (gallbladder surgery) dataset, loaded from HuggingFace.
+    The task is to find the safe/unsafe (gonogo) regions.
+    The expert-specified features are the organ labels.
+
+    For more details, see: https://huggingface.co/datasets/BrachioLab/cholecystectomy
+    """
+
     gonogo_names: str = [
         "Background",
         "Safe",
@@ -37,6 +40,12 @@ class CholecDataset(torch.utils.data.Dataset):
         hf_data_repo: str = HF_DATA_REPO,
         image_size: tuple[int] = (360, 640)
     ):
+        r"""
+        Args:
+            split: The options are "train" and "test".
+            hf_data_repo: The HuggingFace repository where the dataset is stored.
+            image_size: The (height, width) of the image to load.
+        """
         self.dataset = hfds.load_dataset(hf_data_repo, split=split)
         self.dataset.set_format("torch")
         self.image_size = image_size
@@ -70,7 +79,20 @@ class CholecModelOutput:
 
 
 class CholecModel(nn.Module, hfhub.PyTorchModelHubMixin):
+    """
+    Loads an image segmentation model for either: gonogo segmentation, or organ segmentation.
+    The PyTorchModelHubMixin is what lets us do convenient upload/download from HuggingFace
+    using `CholecModel.from_pretrained("BrachioLab/cholecystectomy_gonogo")`
+
+    For more details, see:
+    * https://huggingface.co/BrachioLab/cholecystectomy_organs
+    * https://huggingface.co/BrachioLab/cholecystectomy_gonogo
+    """
     def __init__(self, task: str = "gonogo"):
+        r"""
+        Args:
+            task: Either "gonogo" or "organs"
+        """
         super().__init__()
         self.task = task
         if task == "gonogo":
@@ -81,8 +103,10 @@ class CholecModel(nn.Module, hfhub.PyTorchModelHubMixin):
             raise ValueError(f"Unrecognized task {task}")
 
         self.seg_model = tvm.segmentation.fcn_resnet50(num_classes=self.num_labels)
+
+        # Normalization numbers should be custom computed, but we'll just use ImageNet's :)))
         self.preprocess = tfs.Compose([
-            tfs.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
+            tfs.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
 
     def forward(self, x: torch.FloatTensor):
@@ -94,6 +118,9 @@ class CholecModel(nn.Module, hfhub.PyTorchModelHubMixin):
 
 
 class CholecFixScore(nn.Module):
+    """
+    The FIX score for CholecDataset, where the explicit expert features are known.
+    """
     def __init__(self):
         super().__init__()
 
@@ -105,8 +132,9 @@ class CholecFixScore(nn.Module):
         reduce: bool = True
     ):
         """
-            groups_pred: (N,P,H W)
-            groups_true: (N,T,H,W)
+        Args:
+            groups_pred: A binary-valued tensor of shape (N,P,H W), where P is the number of predicted groups
+            groups_true: A binary-valued tensor of shape (N,T,H,W), where T is the number of true groups
         """
         N, P, H, W = groups_pred.shape
         _, T, H, W = groups_true.shape
@@ -117,10 +145,12 @@ class CholecFixScore(nn.Module):
 
         # Make (N,P,T)-shaped lookup tables for the intersection and union
         if big_batch:
+            # This is the more flashy PyTorch-esque way, but it's not very memory-efficient,
+            # Because the effective batch size is N*P*T, which might be quite big
             inters = (Gp.view(N,P,1,H,W) * Gt.view(N,1,T,H,W)).sum(dim=(-1,-2))
             unions = (Gp.view(N,P,1,H,W) + Gt.view(N,1,T,H,W)).clamp(0,1).sum(dim=(-1,-2))
         else:
-            # More memory-efficient
+            # Uses for-loops, but is far more memory-efficient.
             inters = torch.zeros(N,P,T).to(Gp.device)
             unions = torch.zeros(N,P,T).to(Gp.device)
             for i in range(P):
@@ -128,7 +158,7 @@ class CholecFixScore(nn.Module):
                     inters[:,i,j] = (Gp[:,i] * Gt[:,j]).sum(dim=(-1,-2))
                     unions[:,i,j] = (Gp[:,i] + Gt[:,j]).clamp(0,1).sum(dim=(-1,-2))
         ious = inters / unions  # (N,P,T)
-        ious[~ious.isfinite()] = 0 # Set the bad values to a score of zero
+        ious[~ious.isfinite()] = 0 # Set nans and inftys to zero.
         iou_maxs = ious.max(dim=-1).values   # (N,P): max_{gt in Gt} iou(gp, gt)
 
         # sum_{gp in group_preds(feature)} iou_max(gp, Gt)
@@ -141,44 +171,69 @@ class CholecFixScore(nn.Module):
             return score    # (N,H,W), a score for each feature
 
 
+r"""
+Some code for running the FIX score on different baselines.
+We can probably afford to refactor `get_cholec_scores` elsewhere,
+but it will be here for now ... or permanently? :))
+"""
+
+_all_cholec_baselines = [
+    'identity',
+    'random',
+    'patch',
+    'quickshift',
+    'watershed',
+    'sam',
+    'ace',
+    'craft',
+    'archipelago'
+]
+
 def get_cholec_scores(
-    baselines = ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
-    N = None,
+    baselines = _all_cholec_baselines,
+    num_todo = None,
     batch_size = 8,
     device = "cuda" if torch.cuda.is_available() else "cpu",
 ):
+    from tqdm import tqdm
+    import sys
+    sys.path.append("../../..")
+    import exlib.features.vision as xfv
+
     torch.manual_seed(1234)
     dataset = CholecDataset(split="test")
     metric = CholecFixScore()
 
-    if N is not None:
-        dataset = Subset(dataset, torch.randperm(len(dataset))[:N].tolist())
+    if num_todo is not None:
+        dataset = Subset(dataset, torch.randperm(len(dataset))[:num_todo].tolist())
 
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    resizer = tfs.Resize((180,320)) # Originally (360,640)
+    resizer = tfs.Resize((180,320)) # A smaller image makes algos like quickshift much faster.
     
     all_baselines_scores = {}
     for item in tqdm(dataloader):
         for baseline in baselines:
             if baseline == "identity":
-                groups = IdentityGroups()
+                groups = xfv.IdentityGroups()
             elif baseline == "random":
-                groups = RandomGroups(max_groups=8)
+                groups = xfv.RandomGroups(max_groups=8)
             elif baseline == "patch": # patch
-                groups = PatchGroups(grid_size=(8,14), mode="grid")
+                groups = xfv.PatchGroups(grid_size=(8,14), mode="grid")
             elif baseline == "quickshift": # quickshift
-                groups = QuickshiftGroups(max_groups=8)
+                groups = xfv.QuickshiftGroups(max_groups=8)
             elif baseline == "watershed": # watershed
-                groups = WatershedGroups(max_groups=8)
+                groups = xfv.WatershedGroups(max_groups=8)
             elif baseline == "sam": # watershed
-                groups = SamGroups(max_groups=8)
+                groups = xfv.SamGroups(max_groups=8)
             elif baseline == "ace":
-                groups = NeuralQuickshiftGroups(max_groups=8)
+                groups = xfv.NeuralQuickshiftGroups(max_groups=8)
             elif baseline == "craft":
-                groups = CraftGroups(max_groups=8)
+                groups = xfv.CraftGroups(max_groups=8)
             elif baseline == "archipelago":
-                groups = ArchipelagoGroups(max_groups=8)
+                groups = xfv.ArchipelagoGroups(max_groups=8)
+            else:
+                raise ValueError(f"Unknown baseline {baseline}")
 
             groups.eval().to(device)
 
@@ -192,15 +247,13 @@ def get_cholec_scores(
 
                 if baseline in all_baselines_scores.keys():
                     scores = all_baselines_scores[baseline]
-                    scores.append(score) #.mean(dim=(1,2)))
+                    scores.append(score)
                 else: 
-                    scores = [score] #.mean(dim=(1,2))]
+                    scores = [score]
                 all_baselines_scores[baseline] = scores
 
-    
     for baseline in baselines:
         scores = torch.cat(all_baselines_scores[baseline])
-        # print(f"Avg alignment of {baseline} features: {scores.mean():.4f}")
         all_baselines_scores[baseline] = scores
 
     return all_baselines_scores
