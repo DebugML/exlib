@@ -83,28 +83,30 @@ class MassMapsConvnetForImageRegression(PreTrainedModel):
     def forward(self, 
                 x: torch.Tensor,
                 output_hidden_states: Optional[bool] = False, 
-                return_dict: Optional[bool] = False):
+                return_tuple: Optional[bool] = False):
         """
         x: torch.Tensor (batch_size, 1, 66, 66)
         output_hidden_states: bool
         return_dict: bool
         """
+        if output_hidden_states:
+            return_tuple = True
         hidden_states = []
         x = self.conv1(x)
-        if output_hidden_states:
-            hidden_states.append(x.clone())
         x = self.relu1(x)
         x = self.maxpool1(x)
-        x = self.conv2(x)
         if output_hidden_states:
             hidden_states.append(x.clone())
+        x = self.conv2(x)
         x = self.relu2(x)
         x = self.maxpool2(x)
-        x = self.conv3(x)
         if output_hidden_states:
             hidden_states.append(x.clone())
+        x = self.conv3(x)
         x = self.relu3(x)
         x = self.maxpool3(x)
+        if output_hidden_states:
+            hidden_states.append(x.clone())
         x = self.flatten(x)
         x = self.fc1(x)
         x = self.relu4(x)
@@ -114,7 +116,7 @@ class MassMapsConvnetForImageRegression(PreTrainedModel):
         pooler_output = self.relu6(x)
         logits = self.fc4(pooler_output)
 
-        if not return_dict:
+        if not return_tuple:
             return logits
         
         return ModelOutput(
