@@ -258,4 +258,14 @@ def get_cholec_scores(
 
     return all_baselines_scores
     
+# get preprocessed data for input into feature extractor and metric    
+def preprocess_cholec(batch):
+    import torchvision.transforms as tfs
+    resizer = tfs.Resize((180,320))
+    x = resizer(batch['image'])
+    organ_masks = F.one_hot(batch["organs"]).permute(0,3,1,2)
+    organ_masks = resizer(organ_masks.float()).long()
+    X = {'x': x}
+    metric_inputs = {'groups_true': organ_masks}
+    return X, metric_inputs
     

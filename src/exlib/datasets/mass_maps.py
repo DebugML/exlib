@@ -8,6 +8,7 @@ import matplotlib
 import numpy as np
 
 from datasets import load_dataset
+from torch.utils.data import Dataset
 from collections import defaultdict
 import torch.nn.functional as F
 from tqdm.auto import tqdm
@@ -52,7 +53,20 @@ class MassMapsConvnetConfig(PretrainedConfig):
         ):
         super().__init__(**kwargs)
         self.num_classes = num_classes
+
+
+class MassMapsDataset(Dataset):
+    def __init__(self, data_dir = "BrachioLab/massmaps-cosmogrid-100k", config_path = "BrachioLab/massmaps-conv", split: str = "test"):
+        self.dataset = load_dataset(data_dir, split = split)
+        self.dataset.set_format('torch', columns=['input', 'label'])
+        self.config = MassMapsConvnetConfig.from_pretrained(config_path)
         
+    def __len__(self):
+        return len(self.dataset)
+    
+    def __getitem__(self, idx):
+        return self.dataset[idx]
+      
         
 class MassMapsConvnetForImageRegression(PreTrainedModel):
     config_class = MassMapsConvnetConfig
@@ -349,3 +363,10 @@ def get_mass_maps_scores(
         all_baselines_scores[baseline_name] = scores
 
     return all_baselines_scores
+
+
+def preprocess_mass_maps(batch):
+    x = batch['input']
+    X = {'x': x}
+    metric_inputs = {'x': x}
+    return X, metric_inputs

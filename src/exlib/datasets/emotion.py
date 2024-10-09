@@ -241,3 +241,10 @@ def get_emotion_scores(
         all_baselines_scores[baseline] = baseline_scores
     
     return all_baselines_scores
+
+
+def preprocess_emotion(batch):
+    x = batch['word_list']
+    X = {'x': x[0]} # politeness can only do batch size of 1
+    metric_inputs = {'original_data': x[0]}
+    return X, metric_inputs
