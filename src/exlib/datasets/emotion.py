@@ -5,7 +5,7 @@ import pandas as pd
 import tqdm
 from tqdm import tqdm
 from torch.utils.data import DataLoader, Subset
-from datasets import load_dataset
+import datasets as hfds
 import torch.nn as nn
 import sentence_transformers
 
@@ -27,7 +27,7 @@ TOKENIZER_REPO = "roberta-base"
 
 
 def load_data():
-    hf_dataset = load_dataset(DATASET_REPO)
+    hf_dataset = hfds.load_dataset(DATASET_REPO)
     return hf_dataset
 
 
@@ -41,7 +41,7 @@ def load_model():
 #go emotions dataset
 class EmotionDataset(torch.utils.data.Dataset):
     def __init__(self, split):
-        dataset = load_dataset(DATASET_REPO)[split]        
+        dataset = hfds.load_dataset(DATASET_REPO)[split]
         self.dataset = dataset
         self.tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_REPO)
         self.max_len = max([len(text.split()) for text in dataset['text']])

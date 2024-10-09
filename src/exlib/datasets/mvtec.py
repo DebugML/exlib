@@ -30,7 +30,7 @@ class MVTecDataset(Dataset):
         self,
         category: str,
         split: str,
-        image_size: int = 256,
+        image_size: tuple[int,int] = (256,256),
         hf_data_repo = HF_DATA_REPO,
     ):
         self.split = split
