@@ -147,6 +147,7 @@ class PolitenessFixScore(nn.Module):
 
     def forward(self, group_masks:list, original_data:list, language="english", reduce=True): # original_data is processed_word_list
         #create groups
+        # import pdb; pdb.set_trace()
         groups = []
         for i in range(len(group_masks)):
             mask = group_masks[i]
@@ -240,3 +241,10 @@ def get_politeness_scores(
         baseline_scores = torch.tensor(baseline_scores)
         all_baselines_scores[baseline] = baseline_scores
     return all_baselines_scores
+
+
+def preprocess_politeness(batch):
+    x = batch['word_list']
+    X = {'x': x[0]} # politeness can only do batch size of 1
+    metric_inputs = {'original_data': x[0]}
+    return X, metric_inputs

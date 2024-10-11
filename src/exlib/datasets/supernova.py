@@ -41,6 +41,15 @@ class SupernovaDataset(Dataset):
     
     def __getitem__(self, idx):
         return self.dataset[idx]
+
+    def get_dataloader(self, batch_size = 5, compute_loss = True, shuffle = True):
+        return create_test_dataloader_raw(
+            dataset=self,
+            batch_size=batch_size,
+            compute_loss=compute_loss,
+            shuffle=shuffle
+        )
+        
         
             
 class SupernovaClsModel(nn.Module):
@@ -188,3 +197,9 @@ def plot_data_by_wavelength(times, fluxes, errors, wavelengths, title, bi, j):
     #plt.savefig(f'groups_example/plot_org_{bi}_{j}.png', format='png', dpi=300, bbox_inches='tight')
     plt.grid(False)
     plt.show()
+
+
+def preprocess_supernova(batch):
+    X = batch
+    metric_inputs = batch
+    return X, metric_inputs

@@ -282,4 +282,9 @@ def get_chestx_scores(
     return all_baselines_scores
         
 
-
+def preprocess_chestx(batch):
+    x = batch['image'] # might need image = image.repeat(1,3,1,1) for archipelago
+    structs_masks = batch["structs"]
+    X = {'x': x}
+    metric_inputs = {'groups_true': structs_masks}
+    return X, metric_inputs
