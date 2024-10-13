@@ -18,6 +18,7 @@ import exlib
 from exlib.features.text import *
 
 from .politeness_helper import load_lexica
+from .common import BaseFixScore
 
 DATASET_REPO = "BrachioLab/multilingual_politeness"
 MODEL_REPO = "BrachioLab/xlm-roberta-politeness"
@@ -72,7 +73,7 @@ class PolitenessClassifier(nn.Module):
         return logits
 
 
-class PolitenessFixScore(nn.Module): 
+class PolitenessFixScore(BaseFixScore): 
     def __init__(self, model_name:str="distiluse-base-multilingual-cased"): 
         super().__init__()
         self.model = sentence_transformers.SentenceTransformer(model_name)
@@ -145,9 +146,11 @@ class PolitenessFixScore(nn.Module):
 
         return group_alignments
 
-    def forward(self, group_masks:list, original_data:list, language="english", reduce=True): # original_data is processed_word_list
+    def forward(self, groups_pred:list, x:list, language="english", reduce=True): # original_data is processed_word_list
         #create groups
         # import pdb; pdb.set_trace()
+        group_masks = groups_pred
+        original_data = x
         groups = []
         for i in range(len(group_masks)):
             mask = group_masks[i]
@@ -246,5 +249,5 @@ def get_politeness_scores(
 def preprocess_politeness(batch):
     x = batch['word_list']
     X = {'x': x[0]} # politeness can only do batch size of 1
-    metric_inputs = {'original_data': x[0]}
+    metric_inputs = {'x': x[0]}
     return X, metric_inputs

@@ -18,6 +18,7 @@ import exlib
 # Baselines
 from exlib.features.vision.mass_maps import MassMapsOracle, MassMapsOne
 from exlib.features.vision import *
+from .common import BaseFixScore
 
 
 DATASET_REPO = "BrachioLab/massmaps-cosmogrid-100k"
@@ -140,7 +141,7 @@ class MassMapsConvnetForImageRegression(PreTrainedModel):
         )
 
 
-class MassMapsFixScore(nn.Module):
+class MassMapsFixScore(BaseFixScore):
     def __init__(self, void_threshold=0, cluster_threshold=3, 
                  eps=1e-6,
                 #  void_scale=1, cluster_scale=1
@@ -150,7 +151,7 @@ class MassMapsFixScore(nn.Module):
         self.cluster_threshold = cluster_threshold
         self.eps = eps
 
-    def forward(self, groups, x, reduce=True, return_dict=False):
+    def forward(self, groups_true, x, reduce=True, return_dict=False):
         """
         group: (N, M, H, W) 0 or 1, or bool
         x: image (N, 1, H, W)
@@ -158,13 +159,13 @@ class MassMapsFixScore(nn.Module):
         """
         # assert reduce in ['sum', 'none']
         # metric test
-        groups = groups.bool().float() # if float then turned into bool
-        masked_imgs = groups * x # (N, M, H, W)
+        groups_true = groups_true.bool().float() # if float then turned into bool
+        masked_imgs = groups_true * x # (N, M, H, W)
         sigma = x.flatten(2).std(dim=-1) # (N, M)
-        mask_masses = (masked_imgs * groups).flatten(2).sum(-1)
-        img_masses = groups.flatten(2).sum(-1)
+        mask_masses = (masked_imgs * groups_true).flatten(2).sum(-1)
+        img_masses = groups_true.flatten(2).sum(-1)
         mask_intensities = mask_masses / img_masses
-        mask_sizes = groups.flatten(2).sum(-1) # (N, M)
+        mask_sizes = groups_true.flatten(2).sum(-1) # (N, M)
         num_masks = mask_sizes.bool().sum(-1) # (N, M)
         
         p_void = (masked_imgs < self.void_threshold*sigma[:,:,None,None]).sum([-1,-2]) / mask_sizes 
@@ -183,8 +184,8 @@ class MassMapsFixScore(nn.Module):
 
         # align_i
         purity[mask_sizes.bool().logical_not()] = 0 
-        alignment = (purity[:,:,None,None] * groups).sum(1) / groups.sum(1)
-        alignment[groups.sum(1) == 0] = 0
+        alignment = (purity[:,:,None,None] * groups_true).sum(1) / groups_true.sum(1)
+        alignment[groups_true.sum(1) == 0] = 0
 
         if return_dict:
             return {

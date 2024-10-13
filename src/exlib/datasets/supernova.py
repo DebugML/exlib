@@ -25,6 +25,7 @@ import huggingface_hub as hfhub
 import sys
 
 from .supernova_helper import *
+from .common import BaseFixScore
 
 import logging
 logging.getLogger().setLevel(logging.WARNING)
@@ -68,13 +69,14 @@ def calculate_means(x, masks):
     x_totals = torch.clamp(x_totals, min=1e-5)
     return x_sums / x_totals
 
-class SupernovaFixScore(nn.Module): 
+class SupernovaFixScore(BaseFixScore): 
     def __init__(self, sigma = 1, nchunk = 7): 
         super().__init__()
         self.sigma = sigma
         self.nchunk = nchunk
 
-    def forward(self, groups, labels=None, past_values=None, past_time_features=None, past_observed_mask=None, reduce=True):
+    def forward(self, groups_pred, labels=None, past_values=None, past_time_features=None, past_observed_mask=None, reduce=True):
+        groups = groups_pred
         sigma, nchunk = self.sigma, self.nchunk
         t, wl, flux, err = past_time_features[:,:,0].to(device), past_time_features[:,:,1].to(device), past_values[:,:,0].to(device), past_values[:,:,1].to(device)
         unique_wl = torch.Tensor([3670.69, 4826.85, 6223.24, 7545.98, 8590.9, 9710.28]).to(device)
@@ -165,7 +167,7 @@ def get_supernova_scores(
                 elif baseline == 'archipelago':
                     BaselineGroup = ArchipelagoGroups(feature_extractor=model, max_groups=9)
                 pred_groups = BaselineGroup(**batch)
-                fix_score = metric(groups=pred_groups, **batch)
+                fix_score = metric(groups_pred=pred_groups, **batch)
                 fix_score_sum = fix_score.sum().item()
                 elements = fix_score.numel()
                 fix_scores_all[baseline] += fix_score_sum

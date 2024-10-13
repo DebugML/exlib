@@ -1,10 +1,10 @@
 import torch
 
-def bootstrap(scores):
+def bootstrap(scores, n_samples=5):
     scores_samples = []
     means = []
 
-    for _ in range(5):
+    for _ in range(n_samples):
         scores_new = torch.zeros(scores.shape)
         for i in range(len(scores_new)):
             # print(i)

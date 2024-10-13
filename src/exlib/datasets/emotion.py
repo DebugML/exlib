@@ -19,6 +19,7 @@ import exlib
 from exlib.features.text import *
 
 from .emotion_helper import project_points_onto_axes, load_emotions
+from .common import BaseFixScore
 
 # MODEL_REPO = "BrachioLab/roberta-base-go_emotions"
 MODEL_REPO = "SamLowe/roberta-base-go_emotions"
@@ -76,7 +77,7 @@ class EmotionClassifier(nn.Module):
         return outputs
     
 
-class EmotionFixScore(nn.Module): 
+class EmotionFixScore(BaseFixScore): 
     def __init__(self, model_name:str="all-mpnet-base-v2"): 
         super().__init__()
         self.model = sentence_transformers.SentenceTransformer(model_name)
@@ -140,8 +141,10 @@ class EmotionFixScore(nn.Module):
         alignments = [self.tanh(np.exp(-a)) for a in alignments]
         return alignments
     
-    def forward(self, group_masks:list, original_data:list, language="english", reduce=True): # original_data is processed_word_list
+    def forward(self, groups_pred:list, x:list, language="english", reduce=True): # original_data is processed_word_list
         #create groups
+        group_masks = groups_pred
+        original_data = x
         groups = []
         for i in range(len(group_masks)):
             mask = group_masks[i]
@@ -246,5 +249,5 @@ def get_emotion_scores(
 def preprocess_emotion(batch):
     x = batch['word_list']
     X = {'x': x[0]} # politeness can only do batch size of 1
-    metric_inputs = {'original_data': x[0]}
+    metric_inputs = {'x': x[0]}
     return X, metric_inputs

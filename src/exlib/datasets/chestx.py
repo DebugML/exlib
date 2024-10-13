@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import torchxrayvision as xrv
 import datasets as hfds
 import huggingface_hub as hfhub
+from .common import BaseFixScore
 
 
 HF_DATA_REPO = "BrachioLab/chestx"
@@ -140,7 +141,7 @@ class ChestXPathologyModel(nn.Module, hfhub.PyTorchModelHubMixin):
         return out[:,pathol_idxs]
 
 
-class ChestXFixScore(nn.Module):
+class ChestXFixScore(BaseFixScore):
     """
     The FIX score for ChestXDataset, where the explicit expert features are known.
     """

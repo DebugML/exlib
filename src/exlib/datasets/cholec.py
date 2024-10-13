@@ -7,6 +7,7 @@ import torchvision.transforms as tfs
 from dataclasses import dataclass
 import datasets as hfds
 import huggingface_hub as hfhub
+from .common import BaseFixScore
 
 
 HF_DATA_REPO = "BrachioLab/cholecystectomy_segmentation"
@@ -117,7 +118,7 @@ class CholecModel(nn.Module, hfhub.PyTorchModelHubMixin):
         )
 
 
-class CholecFixScore(nn.Module):
+class CholecFixScore(BaseFixScore):
     """
     The FIX score for CholecDataset, where the explicit expert features are known.
     """
