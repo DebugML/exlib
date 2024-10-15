@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/exlib)](https://pypi.org/project/exlib/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/BrachioLab/exlib/blob/master/LICENSE)
 
-[<a href="https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf">Paper</a>] [<a href="https://brachiolab.github.io/fix/">Website</a>] 
+[<a href="https://arxiv.org/abs/2409.13684">Paper</a>] [<a href="https://brachiolab.github.io/fix/">Website</a>] 
 
 Official implementation for "The FIX Benchmark: Extracting Features Interpretable to eXperts".
 
@@ -69,9 +69,10 @@ FIX currently includes 6 datasets, which we've briefly listed below. All dataset
 ## Citation
 Please cite the FIX paper as follows if you use the data or code from the FIX benchmark:
 ```bibtex
-@misc{jin2024fix,
-  title={The FIX Benchmark: Extracting Features Interpretable to eXperts},
-  author={Helen Jin and Shreya Havaldar and Chaehyeon Kim and Anton Xue and Weiqiu You and Helen Qu and Marco Gatti and Daniel A Hashimoto and Bhuvnesh Jain and Amin Madani and Masao Sako and Lyle Ungar and Eric Wong},
+@article{jin2024fix,
+  title={The FIX Benchmark: Extracting Features Interpretable to eXperts}, 
+  author={Jin, Helen and Havaldar, Shreya and Kim, Chaehyeon and Xue, Anton and You, Weiqiu and Qu, Helen and Gatti, Marco and Hashimoto, Daniel and Jain, Bhuvnesh and Madani, Amin and Sako, Masao and Ungar, Lyle and Wong, Eric},
+  journal={arXiv preprint arXiv:2409.13684},
   year={2024}
 }
 ```
