@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "exlib"
-version = "0.1.0"
+version = "0.1.1"
 authors = [
   { name="Eric Wong", email="exwong@cis.upenn.edu" },
+  { name="Helen Jin", email="helenjin@seas.upenn.edu" },
 ]
 dependencies = [
   'lime >= 0.2',
   'shap >= 0.42',
   'torch >= 2.0',
   'torchvision >= 0.15', 
-  'torchaudio >= 2.0',
   'grad-cam >= 1.4.8',
   'jsonlines >= 3.1.0', 
   'scikit-image >= 0.22',
@@ -21,7 +21,11 @@ dependencies = [
   'transformers >= 4.38', 
   'sentence-transformers >= 3.0.0',
   'sentencepiece >= 0.2.0',
-  'torchxrayvision >= 1.2.3'
+  'torchxrayvision >= 1.2.3',
+  'bertopic >= 0.16.4',
+  'segment_anything >= 1.0',
+  'timm >= 1.0.10',
+  'notebook',
 ]
 description = "Toolkit for explainability by BrachioLab"
 readme = "README.md"
