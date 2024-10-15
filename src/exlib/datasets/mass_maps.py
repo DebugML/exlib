@@ -8,6 +8,7 @@ import matplotlib
 import numpy as np
 
 from datasets import load_dataset
+from torch.utils.data import Dataset
 from collections import defaultdict
 import torch.nn.functional as F
 from tqdm.auto import tqdm
@@ -16,9 +17,8 @@ sys.path.append("../src")
 import exlib
 # Baselines
 from exlib.features.vision.mass_maps import MassMapsOracle, MassMapsOne
-from exlib.features.vision.watershed import WatershedGroups
-from exlib.features.vision.quickshift import QuickshiftGroups
-from exlib.features.vision.patch import PatchGroups
+from exlib.features.vision import *
+from .common import BaseFixScore
 
 
 DATASET_REPO = "BrachioLab/massmaps-cosmogrid-100k"
@@ -54,7 +54,20 @@ class MassMapsConvnetConfig(PretrainedConfig):
         ):
         super().__init__(**kwargs)
         self.num_classes = num_classes
+
+
+class MassMapsDataset(Dataset):
+    def __init__(self, data_dir = "BrachioLab/massmaps-cosmogrid-100k", config_path = "BrachioLab/massmaps-conv", split: str = "test"):
+        self.dataset = load_dataset(data_dir, split = split)
+        self.dataset.set_format('torch', columns=['input', 'label'])
+        self.config = MassMapsConvnetConfig.from_pretrained(config_path)
         
+    def __len__(self):
+        return len(self.dataset)
+    
+    def __getitem__(self, idx):
+        return self.dataset[idx]
+      
         
 class MassMapsConvnetForImageRegression(PreTrainedModel):
     config_class = MassMapsConvnetConfig
@@ -85,28 +98,30 @@ class MassMapsConvnetForImageRegression(PreTrainedModel):
     def forward(self, 
                 x: torch.Tensor,
                 output_hidden_states: Optional[bool] = False, 
-                return_dict: Optional[bool] = False):
+                return_tuple: Optional[bool] = False):
         """
         x: torch.Tensor (batch_size, 1, 66, 66)
         output_hidden_states: bool
         return_dict: bool
         """
+        if output_hidden_states:
+            return_tuple = True
         hidden_states = []
         x = self.conv1(x)
-        if output_hidden_states:
-            hidden_states.append(x.clone())
         x = self.relu1(x)
         x = self.maxpool1(x)
-        x = self.conv2(x)
         if output_hidden_states:
             hidden_states.append(x.clone())
+        x = self.conv2(x)
         x = self.relu2(x)
         x = self.maxpool2(x)
-        x = self.conv3(x)
         if output_hidden_states:
             hidden_states.append(x.clone())
+        x = self.conv3(x)
         x = self.relu3(x)
         x = self.maxpool3(x)
+        if output_hidden_states:
+            hidden_states.append(x.clone())
         x = self.flatten(x)
         x = self.fc1(x)
         x = self.relu4(x)
@@ -116,7 +131,7 @@ class MassMapsConvnetForImageRegression(PreTrainedModel):
         pooler_output = self.relu6(x)
         logits = self.fc4(pooler_output)
 
-        if not return_dict:
+        if not return_tuple:
             return logits
         
         return ModelOutput(
@@ -126,7 +141,7 @@ class MassMapsConvnetForImageRegression(PreTrainedModel):
         )
 
 
-class MassMapsAlignment(nn.Module):
+class MassMapsFixScore(BaseFixScore):
     def __init__(self, void_threshold=0, cluster_threshold=3, 
                  eps=1e-6,
                 #  void_scale=1, cluster_scale=1
@@ -136,21 +151,21 @@ class MassMapsAlignment(nn.Module):
         self.cluster_threshold = cluster_threshold
         self.eps = eps
 
-    def forward(self, groups, x, reduce='sum'):
+    def forward(self, groups_true, x, reduce=True, return_dict=False):
         """
         group: (N, M, H, W) 0 or 1, or bool
         x: image (N, 1, H, W)
         return 
         """
-        assert reduce in ['sum', 'none']
+        # assert reduce in ['sum', 'none']
         # metric test
-        groups = groups.bool().float() # if float then turned into bool
-        masked_imgs = groups * x # (N, M, H, W)
+        groups_true = groups_true.bool().float() # if float then turned into bool
+        masked_imgs = groups_true * x # (N, M, H, W)
         sigma = x.flatten(2).std(dim=-1) # (N, M)
-        mask_masses = (masked_imgs * groups).flatten(2).sum(-1)
-        img_masses = groups.flatten(2).sum(-1)
+        mask_masses = (masked_imgs * groups_true).flatten(2).sum(-1)
+        img_masses = groups_true.flatten(2).sum(-1)
         mask_intensities = mask_masses / img_masses
-        mask_sizes = groups.flatten(2).sum(-1) # (N, M)
+        mask_sizes = groups_true.flatten(2).sum(-1) # (N, M)
         num_masks = mask_sizes.bool().sum(-1) # (N, M)
         
         p_void = (masked_imgs < self.void_threshold*sigma[:,:,None,None]).sum([-1,-2]) / mask_sizes 
@@ -169,12 +184,10 @@ class MassMapsAlignment(nn.Module):
 
         # align_i
         purity[mask_sizes.bool().logical_not()] = 0 
-        alignment = (purity[:,:,None,None] * groups).sum(1) / groups.sum(1)
-        alignment[groups.sum(1) == 0] = 0
+        alignment = (purity[:,:,None,None] * groups_true).sum(1) / groups_true.sum(1)
+        alignment[groups_true.sum(1) == 0] = 0
 
-        if reduce == 'sum':
-            return alignment # (N, H, W)
-        else: # none
+        if return_dict:
             return {
                 'alignment': alignment,
                 'purity': purity,
@@ -184,12 +197,17 @@ class MassMapsAlignment(nn.Module):
                 'p_cluster_': p_cluster_,
                 'p_other_': p_other_
             }
+        if reduce:
+            return alignment.mean(dim=(1,2)) # (N,)
+        else:
+            return alignment # (N, H, W)
+            
 
 
 def show_example(groups, X, img_idx=0, mode='contour'):
     assert mode in ['contour', 'dim']
-    massmaps_align = MassMapsAlignment()
-    alignment_results = massmaps_align(groups, X, reduce='none')
+    massmaps_fix_score = MassMapsFixScore()
+    alignment_results = massmaps_fix_score(groups, X, return_dict=True)
     
     m = groups.shape[1]
     cols = 8
@@ -250,9 +268,14 @@ def map_plotter(image, mask, ax=plt, type='dim'):
 
 
 
-def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed', 'oracle', 'one'], subset=False):
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    
+def get_mass_maps_scores(
+    baselines = ['identity', 'random', 'patch', 'quickshift', 'watershed', 'sam', 'ace', 'craft', 'archipelago'],
+    subset = False,
+    N = 1024,
+    batch_size = 16,
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+):
+    torch.manual_seed(1234)
     # Load model
     model = MassMapsConvnetForImageRegression.from_pretrained(MODEL_REPO) # BrachioLab/massmaps-conv
     model = model.to(device)
@@ -265,9 +288,10 @@ def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed', 'oracl
     val_dataset.set_format('torch', columns=['input', 'label'])
     test_dataset.set_format('torch', columns=['input', 'label'])
     
-    massmaps_align = MassMapsAlignment()
-    
-    batch_size = 16
+    massmaps_fix_score = MassMapsFixScore()
+
+    if N < len(test_dataset):
+        test_dataset, _ = torch.utils.data.random_split(test_dataset, [N, len(test_dataset)-N])
     test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size)
 
     model.eval()
@@ -291,23 +315,37 @@ def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed', 'oracl
             # baseline
             for base_i, baseline_name in enumerate(baselines):
                 if baseline_name == 'patch':
-                    baseline = PatchGroups(num_patches=(8, 8), mode='count')
+                    baseline = PatchGroups(grid_size=(5,5), mode='grid')
                 elif baseline_name == 'quickshift':
-                    baseline = QuickshiftGroups(kernel_size=5, max_dist=10)
+                    baseline = QuickshiftGroups(kernel_size=5, max_dist=10, sigma=0.2, max_groups=25)
                 elif baseline_name == 'watershed':
-                    baseline = WatershedGroups(min_dist=10, compactness=0)
+                    baseline = WatershedGroups(min_dist=10, compactness=0, max_groups=25)
                 elif baseline_name =='oracle':
                     baseline = MassMapsOracle()
-                elif baseline_name =='one':
+                elif baseline_name == 'identity':
                     baseline = MassMapsOne()
+                elif baseline_name == 'random':
+                    baseline = RandomGroups(max_groups=25)
+                elif baseline_name == 'sam':
+                    baseline = SamGroups(max_groups=25)
+                elif baseline_name == 'ace':
+                    baseline = NeuralQuickshiftGroups(max_groups=25)
+                elif baseline_name == 'craft':
+                    baseline = CraftGroups(max_groups=25)
+                elif baseline_name == 'archipelago':
+                    baseline = ArchipelagoGroups(feature_extractor=model, max_groups=25, #segmenter=segmenter)
+                        quickshift_kwargs={'kernel_size': 3, 'max_dist': 5, 'ratio': 1.0, 'sigma': 0.2})
                 else:
                     raise Exception("Please indicate a valid baseline")
+
+                baseline.eval().to(device)
                 
                 groups = baseline(X)
+                # print(baseline_name, 'groups', groups.shape)
     
                 # alignment
-                scores_batch = massmaps_align(groups, X)
-                scores_batch = scores_batch.flatten(1).cpu().numpy().tolist()
+                scores_batch = massmaps_fix_score(groups, X)
+                scores_batch = scores_batch.cpu().numpy().tolist()
 
                 if baseline_name in all_baselines_scores.keys():
                     scores = all_baselines_scores[baseline_name]
@@ -326,3 +364,10 @@ def get_mass_maps_scores(baselines = ['patch', 'quickshift', 'watershed', 'oracl
         all_baselines_scores[baseline_name] = scores
 
     return all_baselines_scores
+
+
+def preprocess_mass_maps(batch):
+    x = batch['input']
+    X = {'x': x}
+    metric_inputs = {'x': x}
+    return X, metric_inputs

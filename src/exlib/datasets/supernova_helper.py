@@ -114,13 +114,14 @@ def masked_data_collator(mask_probability, cols_to_keep, data):
 
     labels = batch['past_values'][:, 0, :].clone() # only take flux values, should be [batch_size, 1, seq_len]
 
-    masked_indices = torch.bernoulli(torch.full(labels.shape, mask_probability)).bool().squeeze()
+    # import pdb; pdb.set_trace()
+    masked_indices = torch.bernoulli(torch.full(labels.shape, mask_probability)).bool() #.squeeze()
     labels[~masked_indices] = 0  # We only compute loss on masked tokens
 
-    indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.8)).bool().squeeze() & masked_indices
+    indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices # .squeeze()
 
     # 10% of the time, we replace masked input tokens with random word
-    indices_random = torch.bernoulli(torch.full(labels.shape, 0.5)).bool().squeeze() & masked_indices & ~indices_replaced
+    indices_random = torch.bernoulli(torch.full(labels.shape, 0.5)).bool() & masked_indices & ~indices_replaced # .squeeze()
 
     indices_replaced = torch.tile(torch.unsqueeze(indices_replaced, 1), (1, 2, 1))
     indices_random = torch.tile(torch.unsqueeze(indices_random, 1), (1, 2, 1))
@@ -212,6 +213,7 @@ def create_test_dataloader_raw(
     seed: Optional[int] = 42,
     add_objid: Optional[bool] = False,
     compute_loss: Optional[bool] = False,
+    shuffle: Optional[bool] = False,
 ):
     config = dataset.config
     dataset = dataset.dataset
@@ -232,6 +234,7 @@ def create_test_dataloader_raw(
 
     if config.has_labels:
         PREDICTION_INPUT_NAMES.append("labels")
+        # import pdb; pdb.set_trace()
         dataset = dataset.rename_column("label", "labels")
 
     if add_objid:
@@ -251,7 +254,8 @@ def create_test_dataloader_raw(
         batch_size=batch_size,
         # sampler=sampler,
         num_workers=0,
-        collate_fn=partial(masked_data_collator, mask_probability, PREDICTION_INPUT_NAMES)
+        collate_fn=partial(masked_data_collator, mask_probability, PREDICTION_INPUT_NAMES),
+        shuffle=shuffle
     )
 
 def create_test_dataloader(

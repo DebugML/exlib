@@ -16,12 +16,12 @@ dependencies = [
   'torchaudio >= 2.0',
   'grad-cam >= 1.4.8',
   'jsonlines >= 3.1.0', 
-  'segmentation-models-pytorch >= 0.3.3',
   'scikit-image >= 0.22',
   'datasets >= 2.19', 
   'transformers >= 4.38', 
-  'sentence_transformers >= 3.0.0',
-  'sentencepiece >= 0.2.0'
+  'sentence-transformers >= 3.0.0',
+  'sentencepiece >= 0.2.0',
+  'torchxrayvision >= 1.2.3'
 ]
 description = "Toolkit for explainability by BrachioLab"
 readme = "README.md"

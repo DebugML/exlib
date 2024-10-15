@@ -24,8 +24,6 @@ The FIX package contains:
 
 In addition, we include an example script that runs all baselines for every setting.
 
-<!-- For more information, please visit [our website](https://brachiolab.github.io/fix/) or read the main FIX [paper](https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf). -->
-<!-- For questions and feedback, please post on the [discussion board](https://github.com/BrachioLab/exlib/discussions). -->
 
 ## Getting Started
 ### Installation

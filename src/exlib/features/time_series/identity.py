@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn 
 
-class BaselineGroups(nn.Module): 
-    def __init__(self, ngroups=10, window_size=100, labels=None, past_values=None, past_time_features=None, past_observed_mask=None): 
-        super(BaselineGroups, self).__init__()
+class IdentityGroups(nn.Module): 
+    def __init__(self, ngroups=1, window_size=100, labels=None, past_values=None, past_time_features=None, past_observed_mask=None): 
+        super(IdentityGroups, self).__init__()
         self.ngroups = ngroups
         self.window_size = window_size
 

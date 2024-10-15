@@ -1,6 +1,5 @@
 ##### Modules
 import numpy as np 
-import pandas as pd
 
 def project_points_onto_axes(points, x_point1, x_point2, y_point1, y_point2):
     """

@@ -5,27 +5,30 @@
 exlib is a comprehensive package showcasing our lab's work on explanation methods, featuring user-friendly modules for easy application of various techniques. 
 
 ## Installation
-To install:
 ```
 pip install exlib
 ```
 
+<!--
 If you have exlib already installed, please check that you have the latest version:
 ```
 python -c "import exlib; print(exlib.__version__)"
 # This should print "0.1.0". If it does not, update the package by running:
 pip install -U exlib
 ```
+-->
 
-In order to use `pytorch-gradcam`, install the lab version to handle more diverse shapes at 
+To use `pytorch-gradcam`, install our customized and expanded version at
 ```
-grad-cam@git+https://github.com/brachiolab/pytorch-grad-cam
+pip install grad-cam@git+https://github.com/brachiolab/pytorch-grad-cam
 ```
 
 ## Projects
 We list below some relevant projects that use exlib heavily.
 
 ### The FIX Benchmark: Extracting Features Interpretable to eXperts
-* You can find the FIX benchmark README [here](https://github.com/BrachioLab/exlib/tree/main/fix). 
-* [<a href="https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf">Paper</a>] [<a href="https://brachiolab.github.io/fix/">Website</a>] 
+* Documentation available [here](https://github.com/BrachioLab/exlib/tree/main/fix).
+* Quick-start tutorial notebook at [`fix_demo.py`](https://github.com/BrachioLab/exlib/blob/dev/fix_demo.ipynb)
+* [Paper](https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf) and [Website](https://brachiolab.github.io/fix/)
+
 

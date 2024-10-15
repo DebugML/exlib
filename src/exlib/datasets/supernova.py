@@ -12,14 +12,23 @@ from typing import Optional, Union, List
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm.auto import tqdm
-from exlib.features.time_series.chunk import BaselineGroups
+
+# Baselines
+from exlib.features.time_series import *
+
+from exlib.explainers.archipelago import ArchipelagoTimeSeriesCls
 from datasets import load_dataset
 import torch
 import yaml
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 import huggingface_hub as hfhub
+import sys
 
-from exlib.utils.supernova_helper import *
+from .supernova_helper import *
+from .common import BaseFixScore
+
+import logging
+logging.getLogger().setLevel(logging.WARNING)
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -33,6 +42,15 @@ class SupernovaDataset(Dataset):
     
     def __getitem__(self, idx):
         return self.dataset[idx]
+
+    def get_dataloader(self, batch_size = 5, compute_loss = True, shuffle = True):
+        return create_test_dataloader_raw(
+            dataset=self,
+            batch_size=batch_size,
+            compute_loss=compute_loss,
+            shuffle=shuffle
+        )
+        
         
             
 class SupernovaClsModel(nn.Module):
@@ -51,15 +69,15 @@ def calculate_means(x, masks):
     x_totals = torch.clamp(x_totals, min=1e-5)
     return x_sums / x_totals
 
-class SupernovaFIXScores(nn.Module): 
-    def __init__(self, sigma = 1, nchunk = 7, groups=torch.Tensor([]), labels=None, past_values=None, past_time_features=None, past_observed_mask=None): 
-        super(SupernovaFIXScores, self).__init__()
+class SupernovaFixScore(BaseFixScore): 
+    def __init__(self, sigma = 1, nchunk = 7): 
+        super().__init__()
         self.sigma = sigma
         self.nchunk = nchunk
-        self.groups = groups
 
-    def forward(self, labels=None, past_values=None, past_time_features=None, past_observed_mask=None):
-        sigma, nchunk, groups = self.sigma, self.nchunk, self.groups
+    def forward(self, groups_pred, labels=None, past_values=None, past_time_features=None, past_observed_mask=None, reduce=True):
+        groups = groups_pred
+        sigma, nchunk = self.sigma, self.nchunk
         t, wl, flux, err = past_time_features[:,:,0].to(device), past_time_features[:,:,1].to(device), past_values[:,:,0].to(device), past_values[:,:,1].to(device)
         unique_wl = torch.Tensor([3670.69, 4826.85, 6223.24, 7545.98, 8590.9, 9710.28]).to(device)
         
@@ -77,7 +95,6 @@ class SupernovaFIXScores(nn.Module):
         t_delta = t[:,None,None,:] - t_means.unsqueeze(3)
         flux_delta = flux[:,None,None,:] - flux_means.unsqueeze(3)
         
-        # weighted linear regression by groups
         numerator = (groups_by_wl*t_delta*flux_delta).sum(-1)
         denominator = (groups_by_wl*t_delta*t_delta).sum(-1)
         beta = numerator / denominator
@@ -105,52 +122,78 @@ class SupernovaFIXScores(nn.Module):
         alignment_score, _ = torch.max(alignment_score_wv, dim=2)
         alignment_score = torch.nan_to_num(alignment_score)
         scores_per_feature = (alignment_score.unsqueeze(2)*groups)
+
+        scores = (scores_per_feature.sum(1)/torch.clamp(groups.sum(1), min=1e-5))
+        if reduce:
+            return scores.mean(dim=1)
+        else:
+            return scores
+
         
-        return (scores_per_feature.sum(1)/torch.clamp(groups.sum(1), min=1e-5)).mean(dim=1)
+        
+r"""
+Some code for running the FIX score on different baselines.
+"""
+
+_all_supernova_baselines = [
+    'identity', 
+    'random', 
+    '5', 
+    '10', 
+    '15', 
+    'clustering', 
+    'archipelago'
+]       
 
 def get_supernova_scores(
-    baselines = ['chunk 5', 'chunk 10', 'chunk 15'],
-    dataset = SupernovaDataset(data_dir = "BrachioLab/supernova-timeseries", split="test"),
-    SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = torch.Tensor([])),
+    baselines = _all_supernova_baselines,
     batch_size = 5,
 ):
+    torch.manual_seed(1234)
+    dataset = SupernovaDataset(data_dir = "BrachioLab/supernova-timeseries", split="test")
+    metric = SupernovaFixScore(sigma=1, nchunk=7)
     test_dataloader = create_test_dataloader_raw(
-    dataset=dataset,
-    batch_size=5,
-    compute_loss=True
+        dataset=dataset,
+        batch_size=5,
+        compute_loss=True
     )
+
+    fix_scores_all = defaultdict(float)
+    elements_all = defaultdict(float)
     
     all_baselines_scores = {}
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = SupernovaClsModel(model_path = "BrachioLab/supernova-classification").to(device)
+    model.eval()
     with torch.no_grad():
         for bi, batch in tqdm(enumerate(test_dataloader), total=len(test_dataloader)):
             for baseline in baselines:
-                if baseline == 'chunk 5':
-                    BaselineGroup = BaselineGroups(ngroups=5, window_size=100)
-                elif baseline == 'chunk 10':
-                    BaselineGroup = BaselineGroups(ngroups=10, window_size=100)
-                elif baseline == 'chunk 15':
-                    BaselineGroup = BaselineGroups(ngroups=15, window_size=100)
-                else:
-                    raise Exception("Please indicate a valid baseline")
-
+                if baseline == 'identity':
+                    BaselineGroup = IdentityGroups(ngroups=1, window_size=100)
+                elif baseline == 'random':
+                    BaselineGroup = RandomGroups(scaling = 1.5, distinct = 6, window_size=100)
+                elif baseline == '5':
+                    BaselineGroup = SliceGroups(ngroups=5, window_size=100)
+                elif baseline == '10':
+                    BaselineGroup = SliceGroups(ngroups=10, window_size=100)
+                elif baseline == '15':
+                    BaselineGroup = SliceGroups(ngroups=15, window_size=100)
+                elif baseline == 'clustering':
+                    BaselineGroup = ClusteringGroups(nclusters=7)
+                elif baseline == 'archipelago':
+                    BaselineGroup = ArchipelagoGroups(feature_extractor=model, max_groups=9)
                 pred_groups = BaselineGroup(**batch)
-                SupernovaFIXScore = SupernovaFIXScores(sigma=1, nchunk=7, groups = pred_groups)
-                scores_batch = SupernovaFIXScore(**batch)
-                # print(scores_batch)
+                fix_score = metric(groups_pred=pred_groups, **batch)
+                fix_score_sum = fix_score.sum().item()
+                elements = fix_score.numel()
+                fix_scores_all[baseline] += fix_score_sum
+                elements_all[baseline] += elements
 
-                if baseline in all_baselines_scores.keys():
-                    scores = all_baselines_scores[baseline]
-                    scores = scores + scores_batch.tolist()
-                else: 
-                    scores = scores_batch.tolist()
-                all_baselines_scores[baseline] = scores
-                
-    # print(all_baselines_scores)
     for baseline in baselines:
-        scores = torch.tensor(all_baselines_scores[baseline])
-        # print(f"Avg alignment of {baseline} features: {scores.mean():.4f}")
+        scores = fix_scores_all[baseline] / elements_all[baseline]
+        print(f"Avg alignment of {baseline} features: {scores:.4f}")
         all_baselines_scores[baseline] = scores
-        
+
     return all_baselines_scores
 
 def plot_data_by_wavelength(times, fluxes, errors, wavelengths, title, bi, j):
@@ -172,3 +215,9 @@ def plot_data_by_wavelength(times, fluxes, errors, wavelengths, title, bi, j):
     #plt.savefig(f'groups_example/plot_org_{bi}_{j}.png', format='png', dpi=300, bbox_inches='tight')
     plt.grid(False)
     plt.show()
+
+
+def preprocess_supernova(batch):
+    X = batch
+    metric_inputs = batch
+    return X, metric_inputs

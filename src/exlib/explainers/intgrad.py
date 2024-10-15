@@ -61,33 +61,49 @@ def explain_image_with_intgrad(x, model, loss_fn,
 def explain_image_cls_with_intgrad(model, x, label,
                              x0 = None,
                              num_steps = 32,
-                             progress_bar = False):
+                             progress_bar = False,
+                             return_groups=False,
+                             mini_batch_size=16):
     """
     Explain a classification model with Integrated Gradients.
     """
     assert x.size(0) == len(label)
+    if label.ndim == 1:
+        label = label.unsqueeze(1)
 
     # Default baseline is zeros
     x0 = torch.zeros_like(x) if x0 is None else x0
 
     step_size = 1 / num_steps
-    intg = torch.zeros_like(x)
+
+    def get_attr_fn(x, t, model, step_size):
+        x = x.clone().detach().requires_grad_()
+        y = model(x)
+        loss = y.gather(1, t[:,None])
+        # print('loss', loss.shape)
+        loss.sum().backward()
+        return x.grad * step_size
+
+    intg = torch.zeros(x.size(0), x.size(1), x.size(2), x.size(3), label.size(1), 
+                        device=x.device, dtype=x.dtype)
 
     pbar = tqdm(range(num_steps)) if progress_bar else range(num_steps)
+
     for k in pbar:
         ak = k * step_size
         xk = x0 + ak * (x - x0)
         xk.requires_grad_()
-        y = model(xk)
 
-        loss = 0.0
-        for i, l in enumerate(label):
-            loss += y[i, l]
+        attr_curr, _ = get_explanations_in_minibatches(xk, label, get_attr_fn, mini_batch_size, 
+                show_pbar=progress_bar, model=model, step_size=step_size)
+        # print('attr_curr', attr_curr.shape)
+        intg += attr_curr
 
-        loss.backward()
-        intg += xk.grad * step_size
+    attrs = intg
+    if attrs.ndim == 5 and attrs.size(-1) == 1:
+        attrs = attrs.squeeze(-1)
 
-    return FeatureAttrOutput(intg, {})
+    return FeatureAttrOutput(attrs, {})
 
 
 class IntGradImageCls(FeatureAttrMethod):

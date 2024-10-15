@@ -45,10 +45,13 @@ class RiseImageCls(FeatureAttrMethod):
         self.N = N
         self.p1 = p1
 
-    def forward(self, x, label=None):
+    def forward(self, x, t=None, return_groups=False):
         # Apply array of filters to the image]
         # print('RISE')
         self.model.eval()
+        label = t
+        if label.ndim == 1:
+            label = label.unsqueeze(1)
         with torch.no_grad():
             N = self.N
             B, C, H, W = x.size()
@@ -70,8 +73,13 @@ class RiseImageCls(FeatureAttrMethod):
             p = p.view(N, B, CL)
             sal = torch.matmul(p.permute(1, 2, 0), self.masks.view(N, H * W))
             sal = sal.view(B, CL, H, W)
+        attrs = sal[torch.arange(B)[:,None], label][:,None]
         
-        return FeatureAttrOutput(sal[range(B), label].unsqueeze(1), sal)
+        attrs = attrs.permute(0, 1, 3, 4, 2)
+        if attrs.ndim == 5 and attrs.size(-1) == 1:
+            attrs = attrs.squeeze(-1)
+
+        return FeatureAttrOutput(attrs, sal)
 
 
 class RiseTextCls(FeatureAttrMethod):

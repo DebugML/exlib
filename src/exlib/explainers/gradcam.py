@@ -44,17 +44,30 @@ class GradCAMImageCls(FeatureAttrMethod):
                                     reshape_transform=reshape_transform,
                                     use_cuda=True if torch.cuda.is_available() else False)
 
-    def forward(self, X, label=None, target_func=ClassifierOutputSoftmaxTarget):
-        grad_cam_results = []
-        for i in range(len(label)):
-            with torch.enable_grad():
-                grad_cam_result = self.grad_cam(input_tensor=X[i:i+1], 
-                                                targets=[target_func(label[i:i+1])])
-                grad_cam_result = torch.tensor(grad_cam_result)
-                grad_cam_results.append(grad_cam_result)
-        grad_cam_results = torch.stack(grad_cam_results)
+    def forward(self, X, t=None, return_groups=True, target_func=ClassifierOutputSoftmaxTarget,
+                mini_batch_size=16):
+        label = t
+        if label.ndim == 1:
+            label = label.unsqueeze(1)
 
-        return FeatureAttrOutput(grad_cam_results, grad_cam_result)
+        def get_attr_fn(x, t, gradcam, target_func):
+            x = x.clone().detach().requires_grad_()
+            if t.ndim == 1:
+                t = t.unsqueeze(1)
+            results = torch.tensor(gradcam(input_tensor=x, targets=[target_func(tt) for tt in t]), device=x.device)
+            return results[:,None]
+            # return torch.tensor(model(x, target_func=t), device=x.device)
+
+        with torch.enable_grad():
+            grad_cam_results, _ = get_explanations_in_minibatches(X, label, get_attr_fn, mini_batch_size,
+                gradcam=self.grad_cam, target_func=target_func)
+
+        attrs = grad_cam_results
+
+        if attrs.ndim == 5 and attrs.size(-1) == 1:
+            attrs = attrs.squeeze(-1)
+
+        return FeatureAttrOutput(attrs, attrs)
     
 
 class GradCAMTextCls(FeatureAttrMethod):
