@@ -129,8 +129,24 @@ class SupernovaFixScore(BaseFixScore):
         else:
             return scores
 
+        
+        
+r"""
+Some code for running the FIX score on different baselines.
+"""
+
+_all_supernova_baselines = [
+    'identity', 
+    'random', 
+    '5', 
+    '10', 
+    '15', 
+    'clustering', 
+    'archipelago'
+]       
+
 def get_supernova_scores(
-    baselines = ['identity', 'random', '5', '10', '15', 'clustering', 'archipelago'],
+    baselines = _all_supernova_baselines,
     batch_size = 5,
 ):
     torch.manual_seed(1234)

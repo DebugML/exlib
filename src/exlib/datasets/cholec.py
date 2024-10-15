@@ -174,8 +174,6 @@ class CholecFixScore(BaseFixScore):
 
 r"""
 Some code for running the FIX score on different baselines.
-We can probably afford to refactor `get_cholec_scores` elsewhere,
-but it will be here for now ... or permanently? :))
 """
 
 _all_cholec_baselines = [

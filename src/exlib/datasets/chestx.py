@@ -194,9 +194,8 @@ class ChestXFixScore(BaseFixScore):
 
 
 r"""
-Some baselines for running the ChestX FIX score
+Some code for running the FIX score on different baselines.
 """
-
 
 _all_chestx_baselines = [
     'identity',

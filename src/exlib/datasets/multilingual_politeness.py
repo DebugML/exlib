@@ -168,8 +168,23 @@ class PolitenessFixScore(BaseFixScore):
             return scores
 
 
+r"""
+Some code for running the FIX score on different baselines.
+"""
+
+_all_politeness_baselines = [
+    'identity', 
+    'random', 
+    'word', 
+    'phrase', 
+    'sentence', 
+    'clustering', 
+    'archipelago'
+]
+
+
 def get_politeness_scores(
-    baselines = ['identity', 'random', 'word', 'phrase', 'sentence', 'clustering', 'archipelago'],
+    baselines = _all_politeness_baselines,
     utterances_path = 'utterances/multilingual_politeness_test.pt',
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     distinct = 26,
