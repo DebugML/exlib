@@ -2,7 +2,7 @@
 [![PyPI](https://img.shields.io/pypi/v/exlib)](https://pypi.org/project/exlib/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/BrachioLab/exlib/blob/master/LICENSE)
 
-exlib is a comprehensive package showcasing our lab's work on explanation methods, featuring user-friendly modules for easy application of various techniques. 
+`exlib` is a comprehensive package showcasing our lab's work on explanation methods, featuring user-friendly modules for easy application of various techniques. 
 
 ## Installation
 ```
@@ -29,6 +29,6 @@ We list below some relevant projects that use exlib heavily.
 ### The FIX Benchmark: Extracting Features Interpretable to eXperts
 * Documentation available [here](https://github.com/BrachioLab/exlib/tree/main/fix).
 * Quick-start tutorial notebook at [`fix_demo.py`](https://github.com/BrachioLab/exlib/blob/dev/fix_demo.ipynb)
-* [Paper](https://github.com/BrachioLab/brachiolab.github.io/blob/live/fix/jin2024fix.pdf) and [Website](https://brachiolab.github.io/fix/)
+* [Paper](https://arxiv.org/abs/2409.13684) and [Website](https://brachiolab.github.io/fix/)
 
 
