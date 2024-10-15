@@ -26,10 +26,11 @@ dependencies = [
   'segment_anything >= 1.0',
   'timm >= 1.0.10',
   'notebook',
+  'ipywidgets',
 ]
 description = "Toolkit for explainability by BrachioLab"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
