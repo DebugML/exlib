@@ -28,7 +28,7 @@ We list below some relevant projects that use exlib heavily.
 
 ### The FIX Benchmark: Extracting Features Interpretable to eXperts
 * Documentation available [here](https://github.com/BrachioLab/exlib/tree/main/fix).
-* Quick-start tutorial notebook at [`fix_demo.py`](https://github.com/BrachioLab/exlib/blob/dev/fix_demo.ipynb)
+* Quick-start tutorial notebook at [`fix_demo.py`](https://colab.research.google.com/github/BrachioLab/exlib/blob/main/fix/fix_demo.ipynb)
 * [<a href="https://arxiv.org/abs/2409.13684">Paper</a>] [<a href="https://brachiolab.github.io/fix/">Website</a>] [<a href="https://debugml.github.io/fix/">Blog Post</a>] 
 
 
