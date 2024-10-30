@@ -88,14 +88,19 @@ class GroupGenerateLayer(nn.Module):
 
     
 class GroupSelectLayer(nn.Module):
-    def __init__(self, hidden_dim, scale=1, proj=None):
+    def __init__(self, hidden_dim, scale=1, proj=None, init_weights_identity=True):
         super().__init__()
         
         self.hidden_dim = hidden_dim
         self.proj = copy.deepcopy(proj)
         self.multihead_attn = SparseMultiHeadedAttention(hidden_dim, scale=scale)
         self.scale = scale
-        
+
+        self.init_weights_identity = init_weights_identity
+        if init_weights_identity:
+            self.init_weights()
+
+    def init_weights(self):
         embed_dim = self.multihead_attn.embed_dim
         identity_matrix = torch.eye(embed_dim)
         self.multihead_attn.input_weights.data = identity_matrix[None].expand(3, embed_dim, embed_dim).reshape(-1, embed_dim)
@@ -366,6 +371,8 @@ class SOPImage(SOP):
         if epoch == -1:
             epoch = self.num_heads
         bsz, num_channel, img_dim1, img_dim2 = inputs.shape
+
+        c = None
         
         # Mask (Group) generation
         if input_mask_weights is None:
@@ -394,7 +401,8 @@ class SOPImage(SOP):
         else:
             return weighted_logits
 
-    def get_results_tuple(self, weighted_logits, logits, pooler_outputs, input_mask_weights, output_mask_weights, bsz, label):
+    def get_results_tuple(self, weighted_logits, logits, pooler_outputs, input_mask_weights, output_mask_weights, 
+                        bsz, label, c):
         raise NotImplementedError
 
     def run_backbone(self, masked_inputs, mask_batch_size):
@@ -555,7 +563,8 @@ class SOPImageSeg(SOPImage):
 
         return weighted_logits, output_mask_weights, logits, pooler_outputs
     
-    def get_results_tuple(self, weighted_logits, logits, pooler_outputs, input_mask_weights, output_mask_weights, bsz, label):
+    def get_results_tuple(self, weighted_logits, logits, pooler_outputs, input_mask_weights, output_mask_weights, 
+                          bsz, label, c):
         # todo: debug for segmentation
         masks_aggr = None
         masks_aggr_pred_cls = None
@@ -578,7 +587,7 @@ class SOPImageSeg(SOPImage):
                                     masks_aggr,
                                     flat_masks,
                                     grouped_attributions,
-                                    None)
+                                    c)
 
 
 class SOPText(SOP):

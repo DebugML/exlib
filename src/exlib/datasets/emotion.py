@@ -7,7 +7,10 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader, Subset
 import datasets as hfds
 import torch.nn as nn
-import sentence_transformers
+try:
+    import sentence_transformers
+except Exception as e:
+    print(f'sentence_transformers has errors: {e}')
 
 from pathlib import Path
 

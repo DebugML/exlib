@@ -52,7 +52,7 @@ class CholecDataset(Dataset):
         self.image_size = image_size
         self.preprocess_image = tfs.Compose([
             tfs.Lambda(lambda x: x.float() / 255),
-            tfs.Resize(image_size),
+            tfs.Resize(image_size), # for datasets version too old, the dimension can be (3, H, W) and this will break
         ])
         self.preprocess_labels = tfs.Compose([
             tfs.Lambda(lambda x: x.unsqueeze(0)),
