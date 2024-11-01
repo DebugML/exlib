@@ -10,7 +10,7 @@ import huggingface_hub as hfhub
 from .common import BaseFixScore
 
 
-HF_DATA_REPO = "BrachioLab/cholecystectomy_segmentation"
+HF_DATA_REPO = "BrachioLab/cholec"
 
 
 class CholecDataset(Dataset):
@@ -64,9 +64,13 @@ class CholecDataset(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        image = self.preprocess_image(self.dataset[idx]["image"])
-        gonogo = self.preprocess_labels(self.dataset[idx]["gonogo"])
-        organs = self.preprocess_labels(self.dataset[idx]["organs"])
+        if self.dataset[idx]['image'].shape[:2] == self.image_size:
+            image = self.dataset[idx]['image'].permute(2,0,1)
+        else:
+            image = self.dataset[idx]['image']
+        image = self.preprocess_image(image)
+        gonogo = self.preprocess_labels(self.dataset[idx]["gonogo"]).long()
+        organs = self.preprocess_labels(self.dataset[idx]["organ"]).long()
         return {
             "image": image,     # (3,H,W)
             "gonogo": gonogo,   # (H,W)
