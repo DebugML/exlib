@@ -165,7 +165,8 @@ class ArchipelagoTextCls(FeatureAttrMethod):
     def __init__(self, model, top_k=5):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model_wrapper = BertWrapperTorch(model, device)
-        super().__init__(model_wrapper)
+        super().__init__(model)
+        self.model_wrapper = model_wrapper
         self.top_k = top_k
 
     def forward(self, x, t, **kwargs):
@@ -188,7 +189,7 @@ class ArchipelagoTextCls(FeatureAttrMethod):
                 x_i = x[i]
                 kwargs_i = {k: v[i] for k, v in kwargs.items()}
             if t is None:
-                predictions = self.model(np.expand_dims(x_i,0))
+                predictions = self.model_wrapper(np.expand_dims(x_i,0))
                 class_idx = predictions[0].argsort()[::-1][0]
             else:
                 class_idx = t[i].cpu().item()
@@ -197,7 +198,7 @@ class ArchipelagoTextCls(FeatureAttrMethod):
             baseline = np.zeros_like(inputs_np)
 
             xf = TextXformer(inputs_np, baseline)
-            apgo = Archipelago(self.model, data_xformer=xf, output_indices=class_idx, batch_size=20)
+            apgo = Archipelago(self.model_wrapper, data_xformer=xf, output_indices=class_idx, batch_size=20)
             explanation = apgo.explain(top_k=self.top_k)
 
             mask_weights = []
@@ -219,63 +220,63 @@ class ArchipelagoTextCls(FeatureAttrMethod):
             "mask_weights": mask_weights_all,
         })
 
-class ArchipelagoTextCls(FeatureAttrMethod):
-    """ Text classification with integrated gradients
-    """
-    def __init__(self, model, top_k=5):
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        model_wrapper = BertWrapperTorch(model, device)
-        super().__init__(model_wrapper)
-        self.top_k = top_k
+# class ArchipelagoTextCls(FeatureAttrMethod):
+#     """ Text classification with integrated gradients
+#     """
+#     def __init__(self, model, top_k=5):
+#         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+#         model_wrapper = BertWrapperTorch(model, device)
+#         super().__init__(model_wrapper)
+#         self.top_k = top_k
 
-    def forward(self, x, t, **kwargs):
-        bsz = x.shape[0]
+#     def forward(self, x, t, **kwargs):
+#         bsz = x.shape[0]
 
-        if not isinstance(t, torch.Tensor) and t is not None:
-            t = torch.tensor(t)
+#         if not isinstance(t, torch.Tensor) and t is not None:
+#             t = torch.tensor(t)
 
-        masks_all = []
-        mask_weights_all = []
-        expln_scores = torch.zeros_like(x).float()
-        for i in range(bsz):
-            if 'attention_mask' in kwargs:
-                text_len = kwargs['attention_mask'][i].sum()
-                x_i = x[i][:text_len]
-                kwargs_i = {k: v[i][:text_len] for k, v in kwargs.items()}
-            else:
-                x_i = x[i]
-                kwargs_i = {k: v[i] for k, v in kwargs.items()}
-            if t is None:
-                predictions = self.model(np.expand_dims(x_i,0))
-                class_idx = predictions[0].argsort()[::-1][0]
-            else:
-                class_idx = t[i].cpu().item()
+#         masks_all = []
+#         mask_weights_all = []
+#         expln_scores = torch.zeros_like(x).float()
+#         for i in range(bsz):
+#             if 'attention_mask' in kwargs:
+#                 text_len = kwargs['attention_mask'][i].sum()
+#                 x_i = x[i][:text_len]
+#                 kwargs_i = {k: v[i][:text_len] for k, v in kwargs.items()}
+#             else:
+#                 x_i = x[i]
+#                 kwargs_i = {k: v[i] for k, v in kwargs.items()}
+#             if t is None:
+#                 predictions = self.model(np.expand_dims(x_i,0))
+#                 class_idx = predictions[0].argsort()[::-1][0]
+#             else:
+#                 class_idx = t[i].cpu().item()
 
-            inputs_np = x_i.cpu().numpy()
-            baseline = np.zeros_like(inputs_np)
+#             inputs_np = x_i.cpu().numpy()
+#             baseline = np.zeros_like(inputs_np)
 
-            xf = TextXformer(inputs_np, baseline)
-            apgo = Archipelago(self.model, data_xformer=xf, output_indices=class_idx, batch_size=20)
-            explanation = apgo.explain(top_k=self.top_k)
+#             xf = TextXformer(inputs_np, baseline)
+#             apgo = Archipelago(self.model, data_xformer=xf, output_indices=class_idx, batch_size=20)
+#             explanation = apgo.explain(top_k=self.top_k)
 
-            mask_weights = []
-            masks = torch.zeros_like(x_i, dtype=float)
+#             mask_weights = []
+#             masks = torch.zeros_like(x_i, dtype=float)
 
-            for e_i, (k, v) in enumerate(sorted(explanation.items(), key=lambda item: item[1], reverse=True)):
-                for s_i in k:
-                    expln_scores[i][s_i] = float(v)
-                    masks[s_i] = e_i
-                mask_weights.append(v)
+#             for e_i, (k, v) in enumerate(sorted(explanation.items(), key=lambda item: item[1], reverse=True)):
+#                 for s_i in k:
+#                     expln_scores[i][s_i] = float(v)
+#                     masks[s_i] = e_i
+#                 mask_weights.append(v)
 
-            mask_weights = torch.tensor(mask_weights).to(x.device)
-            masks_all.append(masks)
-            mask_weights_all.append(mask_weights)
+#             mask_weights = torch.tensor(mask_weights).to(x.device)
+#             masks_all.append(masks)
+#             mask_weights_all.append(mask_weights)
 
-        return FeatureAttrOutput(expln_scores, {
-            "expln_flat_masks": masks_all,
-            "masks": masks_all,
-            "mask_weights": mask_weights_all,
-        })
+#         return FeatureAttrOutput(expln_scores, {
+#             "expln_flat_masks": masks_all,
+#             "masks": masks_all,
+#             "mask_weights": mask_weights_all,
+#         })
 
 class ArchipelagoTimeSeriesCls(FeatureAttrMethod):
     """ Image classification with integrated gradients

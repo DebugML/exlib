@@ -217,7 +217,8 @@ def lime_cls_closure_text(model, tokenizer):
 def explain_text_cls_with_lime(model, tokenizer, x, ts,
                                 LimeTextExplainerKwargs={},
                                 # Gets FA for every label if top_labels == None
-                                explain_instance_kwargs={}):
+                                explain_instance_kwargs={},
+                                return_groups=False):
     """
     Explain a pytorch model with LIME.
     this function is not intended to be called directly.
@@ -236,7 +237,8 @@ def explain_text_cls_with_lime(model, tokenizer, x, ts,
     """
 
     ## Texts here are not batched
-    # L = x.shape
+    L, = x.shape
+
     tokens = tokenizer.convert_ids_to_tokens(x)
     x_str = ' '.join(tokens)
 
@@ -249,12 +251,56 @@ def explain_text_cls_with_lime(model, tokenizer, x, ts,
         todo_labels = ts
 
     lime_exp = explainer.explain_instance(x_str, f, labels=todo_labels, **explain_instance_kwargs)
-    
-    explanation_dict = {w: s for w, s in lime_exp.as_list()}
-    
-    attrs = torch.tensor([explanation_dict[token] if token in explanation_dict else 0 for token in tokens])
+    # import pdb; pdb.set_trace()
+    # Initialize tensors for attributions and masks
+    # seg_mask = torch.from_numpy(lime_exp.segments).to(x.device)
+    attrs_all = torch.zeros((len(todo_labels), L), device=x.device)
+    group_masks_all = torch.zeros((len(todo_labels), L), dtype=torch.long, device=x.device)
+    group_attrs_all = torch.zeros((len(todo_labels), L), dtype=torch.float, 
+        device=x.device)
 
-    return FeatureAttrOutput(attrs, lime_exp)
+    # Vectorized operation to handle multiple labels and segmentations
+    seg_attrs_all = [torch.tensor(lime_exp.local_exp[ti], device=x.device) for ti in todo_labels]
+    # print('seg_attrs_all')
+    # import pdb; pdb.set_trace()
+
+    for i, seg_attrs in enumerate(seg_attrs_all):
+        seg_ids = seg_attrs[:, 0].long()  # Segment IDs
+        seg_values = seg_attrs[:, 1].float()  # Corresponding attribution values
+        
+        # import pdb; pdb.set_trace()
+        # Vectorized addition of attributions based on segments
+        # attrs_all[i] = ((seg_mask.unsqueeze(0) == seg_ids.view(-1, 1, 1)).float() \
+        #     * seg_values.view(-1, 1, 1)).sum(dim=0)
+        
+        attrs_all[i, seg_ids] = seg_values
+        
+        # if return_groups:
+        #     # Assign group mask (vectorized)
+        #     group_masks_all[i] = torch.where(seg_mask.unsqueeze(0) == seg_ids.view(-1, 1, 1), 
+        #             torch.arange(len(seg_ids)).to(x.device).view(-1, 1, 1), 
+        #             group_masks_all[i]).sum(dim=0).long()
+        #     group_attrs_all[i] = seg_values
+
+    # print('attrs_all')
+    # import pdb; pdb.set_trace()
+    # attrs_all = attrs_all.permute(1,2,0)[None]  # (1, H, W, N)
+    # group_masks_all = group_masks_all.permute(1,2,0)[None]  # (1, H, W, N)
+    # group_attrs_all = group_attrs_all.permute(1,0) # (M, N)
+
+    # print('group_attrs_all')
+    # import pdb; pdb.set_trace()
+
+    # if return_groups:
+    #     return GroupFeatureAttrOutput(attrs_all, lime_exp, group_masks_all, group_attrs_all)
+    # else:
+    attrs_all = attrs_all.permute(1,0) # (L, N)
+    return FeatureAttrOutput(attrs_all, lime_exp)
+    # explanation_dict = {w: s for w, s in lime_exp.as_list()}
+    
+    # attrs = torch.tensor([explanation_dict[token] if token in explanation_dict else 0 for token in tokens])
+
+    # return FeatureAttrOutput(attrs, lime_exp)
 
 
 class LimeTextCls(FeatureAttrMethod):
@@ -271,21 +317,44 @@ class LimeTextCls(FeatureAttrMethod):
         self.LimeTextExplainerKwargs = LimeTextExplainerKwargs
         self.explain_instance_kwargs = explain_instance_kwargs
 
-    def forward(self, x, t):
+    def forward(self, x, t, return_groups=False):
         if not isinstance(t, torch.Tensor):
             t = torch.tensor(t)
 
         N = x.size(0)
-        assert x.ndim == 2 and t.ndim == 1 and len(t) == N
+        assert x.ndim == 2 and t.ndim in [1, 2] and len(t) == N
+
+        if t.ndim == 1:
+            t = t.unsqueeze(1)
 
         attrs, lime_exps = [], []
         for i in range(N):
-            xi, ti = x[i], t[i].cpu().item()
-            out = explain_text_cls_with_lime(self.model, self.tokenizer, xi, [ti],
+            xi, ti = x[i], t[i].cpu().tolist()
+            out = explain_text_cls_with_lime(self.model, self.tokenizer, xi, ti,
                     LimeTextExplainerKwargs=self.LimeTextExplainerKwargs,
-                    explain_instance_kwargs=self.explain_instance_kwargs)
+                    explain_instance_kwargs=self.explain_instance_kwargs,
+                    return_groups=return_groups)
 
             attrs.append(out.attributions)
             lime_exps.append(out.explainer_output)
 
-        return FeatureAttrOutput(torch.stack(attrs), lime_exps)
+            # if return_groups:
+            #     group_masks.append(out.group_masks)
+            #     group_attrs.append(out.group_attributions)
+
+        attrs = torch.stack(attrs, dim=0)
+        # if return_groups:
+        #     group_masks = torch.stack(group_masks, dim=0)
+        #     group_attrs = torch.stack(group_attrs, dim=0)
+        if attrs.ndim == 3 and attrs.size(-1) == 1:
+            attrs = attrs.squeeze(-1)
+            # if return_groups:
+            #     group_masks = group_masks.squeeze(-1)
+            #     group_attrs = group_attrs.squeeze(-1)
+
+        # if return_groups:
+        #     return GroupFeatureAttrOutput(attrs, lime_exps, group_masks, group_attrs)
+        # else:
+        return FeatureAttrOutput(attrs, lime_exps)
+
+        # return FeatureAttrOutput(torch.stack(attrs), lime_exps)

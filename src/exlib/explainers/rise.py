@@ -117,9 +117,10 @@ class RiseTextCls(FeatureAttrMethod):
         self.N = N
         self.p1 = p1
 
-    def forward(self, x, label=None, kwargs=None):
+    def forward(self, x, t=None, kwargs=None, verbose=False):
         # Apply array of filters to the image]
         # print('RISE')
+        label = t
         self.model.eval()
         with torch.no_grad():
             N = self.N
@@ -139,7 +140,11 @@ class RiseTextCls(FeatureAttrMethod):
 
             #p = nn.Softmax(dim=1)(model(stack)) in batches
             p = []
-            for i in tqdm(range(0, N*B, self.gpu_batch)):
+            if verbose:
+                pbar = tqdm(range(0, N*B, self.gpu_batch))
+            else:
+                pbar = range(0, N*B, self.gpu_batch)
+            for i in pbar:
                 kwargs_curr = {k: v[i:min(i + self.gpu_batch, N*B)] for k, v in kwargs_new.items()}
                 if self.mask_combine:
                     pred = self.model(inputs_embeds=stack[i:min(i + self.gpu_batch, N*B)], **kwargs_curr)
@@ -158,5 +163,14 @@ class RiseTextCls(FeatureAttrMethod):
             if self.normalize:
                 sal = sal / L
             sal = sal.view(B, CL, L)
+
+        attrs = sal[torch.arange(B)[:,None], label]
+        # print('attrs.shape', attrs.shape)
+        attrs = attrs.permute(0, 2, 1)
+        # print('attrs.shape b', attrs.shape)
+        if attrs.ndim == 3 and attrs.size(-1) == 1:
+            attrs = attrs.squeeze(-1)
+
+        return FeatureAttrOutput(attrs, sal)
         
-        return FeatureAttrOutput(sal[range(B), label], sal)
+        # return FeatureAttrOutput(sal[range(B), label], sal)

@@ -80,19 +80,53 @@ def explain_text_cls_with_shap(model, tokenizer, x, t, mask_value, shap_explaine
             return pred.detach().cpu().numpy()
 
     explainer = shap.Explainer(f, tokenizer, **shap_explainer_kwargs)
-    shap_outs = explainer(x)
-    
-    shap_values = []
-    svs = [torch.tensor(sv[:,t[sv_i]]) 
-           for sv_i, sv in enumerate(shap_outs.values)]
+    # shap_outs = explainer(x)
+
     def pad_tensor_to_length(tensor, target_length=512, pad_value=0):
         """Pad tensor with pad_value up to target_length."""
         pad_length = target_length - tensor.size(0)
         return F.pad(tensor, (0, pad_length), 'constant', pad_value)
-    padded_svs = [pad_tensor_to_length(tensor) for tensor in svs]
-    shap_values = torch.stack(padded_svs, dim=0)
     
-    return FeatureAttrOutput(shap_values, shap_outs)
+    # import pdb; pdb.set_trace()
+    shap_outs = []
+    shap_values = []
+    for xi, ti in zip(x, t):
+        if isinstance(ti, torch.Tensor):
+            if len(ti.shape) == 0:
+                ti = [ti.cpu().item()]
+            else:
+                ti = ti.cpu().numpy().tolist()
+        else:
+            if isinstance(ti, int):
+                ti = [ti]
+        # out = explainer(np.expand_dims(xi, axis=0), outputs=ti)
+        # import pdb; pdb.set_trace()
+        out = explainer([xi], outputs=ti)
+        svs = torch.from_numpy(out.values).to(device) # (1,H,W,C,1)
+        shap_outs.append(out)
+        
+        padded_svs = [pad_tensor_to_length(tensor) for tensor in svs]
+
+        shap_values.append(padded_svs[0]) # (L, N)
+    shap_values = torch.stack(shap_values)
+    attrs = shap_values
+    print(attrs.shape)
+    if attrs.ndim == 3 and attrs.size(-1) == 1:
+        attrs = attrs.squeeze(-1)
+    return FeatureAttrOutput(attrs, shap_outs)
+    
+
+    # shap_values = []
+    # svs = [torch.tensor(sv[:,t[sv_i]]) 
+    #        for sv_i, sv in enumerate(shap_outs.values)]
+    # def pad_tensor_to_length(tensor, target_length=512, pad_value=0):
+    #     """Pad tensor with pad_value up to target_length."""
+    #     pad_length = target_length - tensor.size(0)
+    #     return F.pad(tensor, (0, pad_length), 'constant', pad_value)
+    # padded_svs = [pad_tensor_to_length(tensor) for tensor in svs]
+    # shap_values = torch.stack(padded_svs, dim=0)
+    
+    # return FeatureAttrOutput(shap_values, shap_outs)
 
 
 class ShapTextCls(FeatureAttrMethod):

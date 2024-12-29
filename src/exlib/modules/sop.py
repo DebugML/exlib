@@ -366,8 +366,10 @@ class SOPImage(SOP):
                 return_tuple=False,
                 binary_threshold=-1,
                 separate_scale=False,
-                deletion=False
+                deletion=False,
+                occlusion_type='zero'
                 ):
+        assert occlusion_type in ['zero', 'histogram']
         if epoch == -1:
             epoch = self.num_heads
         bsz, num_channel, img_dim1, img_dim2 = inputs.shape
@@ -376,7 +378,8 @@ class SOPImage(SOP):
         
         # Mask (Group) generation
         if input_mask_weights is None:
-            grouped_inputs, input_mask_weights, c = self.group_generate(inputs, epoch, mask_batch_size, segs, binary_threshold, deletion)
+            grouped_inputs, input_mask_weights, c = self.group_generate(inputs, epoch, mask_batch_size, segs, 
+                binary_threshold, deletion, occlusion_type)
         else:
             grouped_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2) # directly apply mask
 
@@ -423,7 +426,8 @@ class SOPImage(SOP):
         pooler_outputs = torch.cat(pooler_outputs).view(bsz, num_masks, self.hidden_size, -1)
         return logits, pooler_outputs
     
-    def group_generate(self, inputs, epoch, mask_batch_size, segs=None, binary_threshold=-1, deletion=False):
+    def group_generate(self, inputs, epoch, mask_batch_size, segs=None, binary_threshold=-1, deletion=False,
+                       occlusion_type='zero'):
         bsz, num_channel, img_dim1, img_dim2 = inputs.shape
         c = None
         if segs is None:   # should be renamed "segments"
@@ -452,6 +456,7 @@ class SOPImage(SOP):
             neg = input_mask_weights_sort_values[:,topk:]
             c = pos.sum(-1) - neg.sum(-1)
             c = c.view(bsz, -1)
+
             masks_all = torch.zeros_like(input_mask_weights_cand)
             masks_all[torch.arange(masks_all.size(0)).unsqueeze(1), input_mask_weights_sort_indices[:, :topk]] = 1
             masks_all = masks_all.view(bsz, -1, *num_patches)
@@ -474,23 +479,38 @@ class SOPImage(SOP):
         input_mask_weights = input_mask_weights_cand[dropout_mask.bool()].clone()
         input_mask_weights = input_mask_weights.view(bsz, -1, img_dim1, img_dim2)
 
-        masked_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2)
+        if occlusion_type == 'zero':
+            masked_inputs = inputs.unsqueeze(1) * input_mask_weights.unsqueeze(2)
+        elif occlusion_type == 'histogram':
+            # print('hist')
+            
+            # print('input_mask_weights', input_mask_weights.shape)
+            masked_inputs_repeat = inputs.unsqueeze(1).repeat(1, self.num_masks_sample, 1, 1, 1)
+            # input_mask_weights_repeat = input_mask_weights.unsqueeze(2).repeat(1, 1, num_channel, 1, 1)
+            
+            masked_inputs = occlude_input_with_random_pixels(masked_inputs_repeat.view(-1, num_channel, img_dim1, img_dim2),
+                input_mask_weights.view(-1, img_dim1, img_dim2))
+            # print('masked_inputs', masked_inputs.shape)
+            masked_inputs = masked_inputs.view(bsz, -1, num_channel, img_dim1, img_dim2)
+            # print('masked_inputs', masked_inputs.shape)
+        else:
+            raise ValueError(f'occlusion_type {occlusion_type} not implemented')
         return masked_inputs, input_mask_weights, c
     
     def group_select(self, logits, pooler_outputs, img_dim1, img_dim2):
         raise NotImplementedError
 
-    def get_masks_used(self, outputs, i=0):
-        pred = outputs.logits[i].argmax(-1).item()
-        pred_mask_idxs_sort = outputs.mask_weights[i,:,pred].argsort(descending=True)
-        mask_weights_sort = (outputs.mask_weights * outputs.logits_all)[i,pred_mask_idxs_sort,pred]
-        masks_sort = outputs.masks[0,pred_mask_idxs_sort]
-        masks_sort_used = (masks_sort[mask_weights_sort != 0] > masks_sort[mask_weights_sort != 0].mean()).int()
-        mask_weights_sort_used = mask_weights_sort[mask_weights_sort != 0]
-        return {
-            'masks_sort_used': masks_sort_used, 
-            'mask_weights_sort_used': mask_weights_sort_used
-        }
+    # def get_masks_used(self, outputs, i=0):
+    #     pred = outputs.logits[i].argmax(-1).item()
+    #     pred_mask_idxs_sort = outputs.mask_weights[i,:,pred].argsort(descending=True)
+    #     mask_weights_sort = (outputs.mask_weights * outputs.logits_all)[i,pred_mask_idxs_sort,pred]
+    #     masks_sort = outputs.masks[0,pred_mask_idxs_sort]
+    #     masks_sort_used = (masks_sort[mask_weights_sort != 0] > masks_sort[mask_weights_sort != 0].mean()).int()
+    #     mask_weights_sort_used = mask_weights_sort[mask_weights_sort != 0]
+    #     return {
+    #         'masks_sort_used': masks_sort_used, 
+    #         'mask_weights_sort_used': mask_weights_sort_used
+    #     }
         
 
 class SOPImageCls(SOPImage):

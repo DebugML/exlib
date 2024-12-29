@@ -192,6 +192,56 @@ def get_explanations_in_minibatches(x, t, get_attr_fn, mini_batch_size, show_pba
     return attrs, preds
 
 
+def get_explanations_in_minibatches_text(x, t, get_attr_fn, mini_batch_size, x_kwargs={}, 
+        show_pbar=False, **kwargs):
+    """
+    Get explanations in minibatches.
+    Make a general method that takes in an operation with x, labels (in batches) and other kwargs
+    """
+    assert x.size(0) == len(t)
+    if t.ndim == 1:
+        t = t.unsqueeze(1)
+
+    attrs = torch.zeros(x.size(0), t.size(1), x.size(1), x.size(2),
+                        device=x.device, dtype=x.dtype)
+    attrs_shape = attrs.shape
+    attrs = attrs.flatten(0, 1)
+    x_expand = x[:,None].expand(x.shape[0], t.shape[-1], x.shape[1], x.shape[2])
+    x_expand_shape = x_expand.shape
+    x_expand = x_expand.flatten(0, 1)
+    t_expand = t.flatten()
+    x_kwargs_expand = {k: v[:,None].expand(v.shape[0], t.shape[-1], v.shape[1]).flatten(0, 1) \
+        for k, v in x_kwargs.items()}
+
+    pbar = range(0, x_expand.shape[0], mini_batch_size)
+    if show_pbar:
+        pbar = tqdm(pbar)
+
+    preds = []
+    for i in pbar:
+        x_batch = x_expand[i:i+mini_batch_size].clone().detach().requires_grad_()
+        t_batch = t_expand[i:i+mini_batch_size]
+        x_kwargs_batch = {k: v[i:i+mini_batch_size] for k, v in x_kwargs_expand.items()}
+
+        attrs_output = get_attr_fn(x_batch, t_batch, x_kwargs_batch, **kwargs) # (N, C, H, W) same as x_batch
+        if type(attrs_output) == tuple and len(attrs_output) == 2:
+            attrs_i, pred_i = attrs_output
+            preds.append(pred_i)
+        else:
+            attrs_i = attrs_output
+        attrs[i:i+mini_batch_size] = attrs_i
+        
+    if len(preds) > 0:
+        preds = torch.cat(preds)
+    attrs = attrs.view(attrs_shape).sum(-1).permute(0, 2, 1).contiguous()
+
+    if attrs.size(1) != 1:
+        if (attrs[:,0] == attrs[:,1]).all() and (attrs[:,0] == attrs[:,2]).all():
+            attrs = attrs[:,0:1]
+
+    return attrs, preds
+
+    
 def get_binary_masks(h, p, n):
     """
     h: height of the image 224
