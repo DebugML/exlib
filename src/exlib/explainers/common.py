@@ -229,8 +229,11 @@ def get_explanations_in_minibatches_text(x, t, get_attr_fn, mini_batch_size, x_k
             preds.append(pred_i)
         else:
             attrs_i = attrs_output
+        # print('attrs', attrs.shape)
+        # print('attrs_i', attrs_i.shape)
         attrs[i:i+mini_batch_size] = attrs_i
-        
+    
+    # print('preds', preds[0].shape)
     if len(preds) > 0:
         preds = torch.cat(preds)
     attrs = attrs.view(attrs_shape).sum(-1).permute(0, 2, 1).contiguous()

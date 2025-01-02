@@ -204,7 +204,7 @@ def get_cholec_scores(
     import exlib.features.vision as xfv
 
     torch.manual_seed(1234)
-    dataset = CholecDataset(split="test", image_size=(180,320))
+    dataset = CholecDataset(split="test")
     metric = CholecFixScore()
 
     if num_todo is not None:
