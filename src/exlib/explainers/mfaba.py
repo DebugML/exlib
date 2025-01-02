@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 from tqdm.auto import tqdm
 from .common import *
+from .libs.saliency.text_wrapper import ExtraDimModelWrapper
 from .libs.saliency.saliency_zoo import mfaba_cos, mfaba_norm, mfaba_sharp, mfaba_smooth
 
 class MfabaImageCls(FeatureAttrMethod):
@@ -41,15 +42,15 @@ class MfabaImageCls(FeatureAttrMethod):
 
             # return FeatureAttrOutput(torch.tensor(mfaba(self.model, x, t, **kwargs)).to(x.device), {})
 
-class ExtraDimModelWrapper(nn.Module):
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
+# class ExtraDimModelWrapper(nn.Module):
+#     def __init__(self, model):
+#         super().__init__()
+#         self.model = model
         
-    def forward(self, x_embed):
-        if x_embed.ndim == 4:
-            x_embed = x_embed.squeeze(1)
-        return self.model(inputs_embeds=x_embed)
+#     def forward(self, x_embed):
+#         if x_embed.ndim == 4:
+#             x_embed = x_embed.squeeze(1)
+#         return self.model(inputs_embeds=x_embed)
         
 
 class MfabaTextCls(FeatureAttrMethod):
@@ -78,11 +79,11 @@ class MfabaTextCls(FeatureAttrMethod):
         x_embed = self.projection_layer(x)
         with torch.enable_grad():
 
-            def get_attr_fn(x_embed, t, x_kwargs, model):
+            def get_attr_fn(x_embed, t, x_kwargs, model, **kwargs):
                 x_embed = x_embed.clone().detach().requires_grad_().unsqueeze(1)
                 # print('x_embed', x_embed.shape)
                 
-                mfaba_results = torch.tensor(mfaba(model, x_embed, t), device=x.device)
+                mfaba_results = torch.tensor(mfaba(model, x_embed, t, **kwargs), device=x.device)
                 # import pdb; pdb.set_trace()
                 return mfaba_results.squeeze(1)
                 

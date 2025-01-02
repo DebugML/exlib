@@ -108,7 +108,8 @@ class FGSMGradSSA:
             T_kernel = gkern(7, 3, num_channels=num_channels)
         else:
             T_kernel = gkern(7, 3)
-        image_width = data.shape[2]
+        image_height = data.shape[2]
+        image_width = data.shape[3]
         momentum = 1.0
         alpha = self.epsilon / num_steps
         grad = 0
@@ -139,7 +140,7 @@ class FGSMGradSSA:
             # print('_', _)
             for n in pbar_n:
             # for n in tqdm(range(N)):
-                gauss = torch.randn(dt.size()[0], num_channels, image_width, image_width) * (sigma / 255)
+                gauss = torch.randn(dt.size()[0], num_channels, image_height, image_width) * (sigma / 255)
                 # print('gauss', gauss.shape)
                 gauss = gauss.cuda()
                 # print('dt', dt.shape)
@@ -150,6 +151,7 @@ class FGSMGradSSA:
                 dt_idct = idct_2d(dt_dct * mask)
                 # print('dt_idct', dt_idct.shape)
                 dt_idct = V(dt_idct, requires_grad = True)
+                # print('dt_idct', dt_idct.shape)
 
                 # DI-FGSM https://arxiv.org/abs/1803.06978
                 output_v3 = model(DI(dt_idct))
@@ -227,7 +229,7 @@ class FGSMGradSSA:
         noise = 0
         # print('second loop')
         for n in range(N):
-            gauss = torch.randn(dt.size()[0], num_channels, image_width, image_width) * (sigma / 255)
+            gauss = torch.randn(dt.size()[0], num_channels, image_height, image_width) * (sigma / 255)
             # print('gauss', gauss.shape)
             gauss = gauss.cuda()
             dt_dct = dct_2d(dt + gauss).cuda()
