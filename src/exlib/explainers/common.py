@@ -224,6 +224,7 @@ def get_explanations_in_minibatches_text(x, t, get_attr_fn, mini_batch_size, x_k
         x_kwargs_batch = {k: v[i:i+mini_batch_size] for k, v in x_kwargs_expand.items()}
 
         attrs_output = get_attr_fn(x_batch, t_batch, x_kwargs_batch, **kwargs) # (N, C, H, W) same as x_batch
+        # print('in minibatch attrs_output', attrs_output.shape)
         if type(attrs_output) == tuple and len(attrs_output) == 2:
             attrs_i, pred_i = attrs_output
             preds.append(pred_i)
@@ -238,9 +239,13 @@ def get_explanations_in_minibatches_text(x, t, get_attr_fn, mini_batch_size, x_k
         preds = torch.cat(preds)
     attrs = attrs.view(attrs_shape).sum(-1).permute(0, 2, 1).contiguous()
 
-    if attrs.size(1) != 1:
-        if (attrs[:,0] == attrs[:,1]).all() and (attrs[:,0] == attrs[:,2]).all():
-            attrs = attrs[:,0:1]
+    # print('attrs b', attrs.shape)
+    # this is image only
+    # if attrs.size(1) != 1:
+    #     if (attrs[:,0] == attrs[:,1]).all() and (attrs[:,0] == attrs[:,2]).all():
+    #         attrs = attrs[:,0:1]
+    # print('attrs c', attrs.shape)
+    # import pdb; pdb.set_trace()
 
     return attrs, preds
 

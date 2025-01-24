@@ -8,6 +8,9 @@ from .common import *
 from copy import deepcopy
 from .libs.pytorch_grad_cam.base_cam_text import BaseCAMText
 
+from .libs.saliency.text_wrapper import ExtraDimModelWrapper
+from .libs.pytorch_grad_cam.grad_cam_text import GradCAMText
+
 
 class WrappedModelGradCAM(torch.nn.Module):
     def __init__(self, model): 
@@ -69,28 +72,75 @@ class GradCAMImageCls(FeatureAttrMethod):
 
         return FeatureAttrOutput(attrs, attrs)
     
-
+   
 class GradCAMTextCls(FeatureAttrMethod):
-    def __init__(self, model, target_layers, reshape_transform=None):
-        model = WrappedModelGradCAM(model)
+    def __init__(self, model, projection_layer, target_layers, reshape_transform=None):
+        # model = WrappedModelGradCAM(model)
+        wrapped_model = ExtraDimModelWrapper(model).to(next(model.parameters()).device)
 
         super().__init__(model)
         
+        self.projection_layer = projection_layer
+        self.wrapped_model = wrapped_model
+        for name, param in self.wrapped_model.model.named_parameters():
+            param.requires_grad = True
         self.target_layers = target_layers
         with torch.enable_grad():
-            self.grad_cam = GradCAMText(model=model, target_layers=self.target_layers,
+            self.grad_cam = GradCAMText(model=self.wrapped_model, target_layers=self.target_layers,
                                     reshape_transform=reshape_transform,
                                     use_cuda=True if torch.cuda.is_available() else False)
  
-    def forward(self, X, label=None, target_func=ClassifierOutputSoftmaxTarget):
+    def forward(self, x, label=None, target_func=ClassifierOutputSoftmaxTarget, mini_batch_size=16):
         grad_cam_results = []
-        for i in range(len(label)):
-            with torch.enable_grad():
-                grad_cam_result = self.grad_cam(input_tensor=X[i:i+1], 
-                                                targets=[target_func(label[i:i+1])])
-                # import pdb; pdb.set_trace()
-                grad_cam_result = torch.tensor(grad_cam_result)
-                grad_cam_results.append(grad_cam_result)
-        grad_cam_results = torch.cat(grad_cam_results)
+        x_embed = self.projection_layer(x) #.unsqueeze(1)
+        # print('in gradcam')
+        # print('x_embed', x_embed.shape)
+        
+        def get_attr_fn(x, t, xkwargs, **kwargs):
+            gradcam = kwargs['gradcam']
+            target_func = kwargs['target_func']
+            x = x.clone().detach().unsqueeze(1).requires_grad_()
+            if t.ndim == 1:
+                t = t.unsqueeze(1)
+            # print('x', x.shape)
+            # print('t', t.shape)
+            results = torch.tensor(gradcam(input_tensor=x, targets=[target_func(tt) for tt in t]), device=x.device)
+            # print('results', results.shape)
+            return results #[:,None]
+        
+        with torch.enable_grad():
+            grad_cam_results, _ = get_explanations_in_minibatches_text(x_embed, label, get_attr_fn, mini_batch_size,
+                gradcam=self.grad_cam, target_func=target_func)
 
-        return FeatureAttrOutput(grad_cam_results.squeeze(1), {})
+        attrs = grad_cam_results
+        # print('attrs', attrs.shape)
+
+        if attrs.ndim == 3 and attrs.size(-1) == 1:
+            attrs = attrs.squeeze(-1)
+
+        return FeatureAttrOutput(attrs, attrs)
+
+# class GradCAMTextCls(FeatureAttrMethod):
+#     def __init__(self, model, target_layers, reshape_transform=None):
+#         model = WrappedModelGradCAM(model)
+
+#         super().__init__(model)
+        
+#         self.target_layers = target_layers
+#         with torch.enable_grad():
+#             self.grad_cam = GradCAMText(model=model, target_layers=self.target_layers,
+#                                     reshape_transform=reshape_transform,
+#                                     use_cuda=True if torch.cuda.is_available() else False)
+ 
+#     def forward(self, X, label=None, target_func=ClassifierOutputSoftmaxTarget):
+#         grad_cam_results = []
+#         for i in range(len(label)):
+#             with torch.enable_grad():
+#                 grad_cam_result = self.grad_cam(input_tensor=X[i:i+1], 
+#                                                 targets=[target_func(label[i:i+1])])
+#                 # import pdb; pdb.set_trace()
+#                 grad_cam_result = torch.tensor(grad_cam_result)
+#                 grad_cam_results.append(grad_cam_result)
+#         grad_cam_results = torch.cat(grad_cam_results)
+
+#         return FeatureAttrOutput(grad_cam_results.squeeze(1), {})

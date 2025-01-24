@@ -83,4 +83,7 @@ class XDNN(nn.Module):
 
         attributions, _ = get_explanations_in_minibatches(x, t, get_attr_fn, mini_batch_size=mini_batch_size, show_pbar=False, model=self.model, normalize=self.normalize)
         
+        if attributions.ndim == 5 and attributions.size(-1) == 1:
+            attributions = attributions.squeeze(-1)
+
         return AttributionOutputXDNN(outputs, attributions)

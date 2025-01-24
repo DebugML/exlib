@@ -18,4 +18,8 @@ class GradCAMText(BaseCAMText):
                         target_category,
                         activations,
                         grads):
-        return np.mean(grads, axis=(-1))
+        # return np.mean(grads, axis=(-1))
+        # print('grads', grads.shape)
+        return grads
+        # print('grads', grads.shape)
+        # return np.mean(grads, axis=(0))

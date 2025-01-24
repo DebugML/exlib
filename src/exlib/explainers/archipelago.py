@@ -169,16 +169,20 @@ class ArchipelagoTextCls(FeatureAttrMethod):
         self.model_wrapper = model_wrapper
         self.top_k = top_k
 
-    def forward(self, x, t, **kwargs):
+    def forward(self, x, t, verbose=0, **kwargs):
         bsz = x.shape[0]
+        x = x[:,:10]
 
         if not isinstance(t, torch.Tensor) and t is not None:
             t = torch.tensor(t)
 
+        expln_scores_all = []
+        expln_flat_masks_all = []
         masks_all = []
         mask_weights_all = []
         expln_scores = torch.zeros_like(x).float()
         for i in range(bsz):
+            ti = t[i] if t is not None else None
             if 'attention_mask' in kwargs:
                 text_len = kwargs['attention_mask'][i].sum()
                 x_i = x[i][:text_len]
@@ -188,11 +192,21 @@ class ArchipelagoTextCls(FeatureAttrMethod):
             else:
                 x_i = x[i]
                 kwargs_i = {k: v[i] for k, v in kwargs.items()}
-            if t is None:
+            
+            if ti is None:
                 predictions = self.model_wrapper(np.expand_dims(x_i,0))
-                class_idx = predictions[0].argsort()[::-1][0]
+                class_idx = [predictions[0].argsort()[::-1][0]]
             else:
-                class_idx = t[i].cpu().item()
+                if len(t[i].shape) == 0 or len(t[i].shape) == 1 and t[i].shape[0] == 1:
+                    class_idx = [t[i].cpu().item()]
+                else:
+                    class_idx = t[i].cpu().numpy().tolist()
+
+            # if t is None:
+            #     predictions = self.model_wrapper(np.expand_dims(x_i,0))
+            #     class_idx = predictions[0].argsort()[::-1][0]
+            # else:
+            #     class_idx = t[i].cpu().item()
 
             inputs_np = x_i.cpu().numpy()
             baseline = np.zeros_like(inputs_np)
@@ -201,24 +215,146 @@ class ArchipelagoTextCls(FeatureAttrMethod):
             apgo = Archipelago(self.model_wrapper, data_xformer=xf, output_indices=class_idx, batch_size=20)
             explanation = apgo.explain(top_k=self.top_k)
 
-            mask_weights = []
+            expln_scores_i = []
+            expln_flat_masks_i = []
+            masks_i = []
+            mask_weights_i = []
             masks = torch.zeros_like(x_i, dtype=float)
 
-            for e_i, (k, v) in enumerate(sorted(explanation.items(), key=lambda item: item[1], reverse=True)):
-                for s_i in k:
-                    expln_scores[i][s_i] = float(v)
-                    masks[s_i] = e_i
-                mask_weights.append(v)
+            pbar = range(len(class_idx))
+            if verbose >= 1:
+                pbar = tqdm(pbar, desc='Explaining classes')
+            # here each segment is one word
+            for c_i in pbar:
+                expln_scores = torch.zeros_like(x, dtype=torch.float)
+                expln_flat_masks = torch.zeros_like(x, dtype=torch.long)
+                masks = []
+                
+                masks = torch.zeros(len(explanation[c_i]), *x_i.shape, dtype=torch.float, device=x.device)
+                mask_weights = torch.zeros(len(explanation[c_i]), device=x.device)
 
-            mask_weights = torch.tensor(mask_weights).to(x.device)
-            masks_all.append(masks)
-            mask_weights_all.append(mask_weights)
+                for e_i, (k, v) in enumerate(sorted(explanation[c_i].items(), 
+                            key=lambda item: item[1], reverse=True)):
+                    mask = torch.zeros_like(x_i, dtype=torch.float, device=x.device)
+                    v = float(v)
+                    # chose the loop version instead of using torch.isin because it's faster
+                    for s_i in k:
+                        expln_scores[0, s_i] = v
+                        expln_flat_masks[0, s_i] = e_i
+                        masks[e_i, s_i] = 1
+                    mask_weights[e_i] = v
 
-        return FeatureAttrOutput(expln_scores, {
-            "expln_flat_masks": masks_all,
+                expln_scores_i.append(expln_scores)
+                expln_flat_masks_i.append(expln_flat_masks)
+                masks_i.append(masks)
+                mask_weights_i.append(mask_weights)
+
+            expln_scores_all.append(torch.stack(expln_scores_i, dim=-1))
+            expln_flat_masks_all.append(torch.stack(expln_flat_masks_i, dim=-1))
+            masks_all.append(masks_i)
+            mask_weights_all.append(mask_weights_i)
+
+        expln_scores = torch.stack(expln_scores_all, dim=0)
+        expln_flat_masks = torch.stack(expln_flat_masks_all, dim=0)
+
+        # expln_scores = expln_scores.unsqueeze(1)
+        # expln_flat_masks = expln_flat_masks.unsqueeze(1)
+
+        expln_scores = expln_scores.squeeze(1)
+        expln_flat_masks = expln_flat_masks.squeeze(1)
+
+        if expln_scores.ndim == 3 and expln_scores.size(-1) == 1:
+            expln_scores = expln_scores.squeeze(-1)
+            expln_flat_masks = expln_flat_masks.squeeze(-1)
+        # print('expln_scores', expln_scores.shape)
+        # print('expln_flat_masks', expln_flat_masks.shape)
+        # print('masks_all', len(masks_all), len(masks_all[0]), masks_all[0][0].shape)
+        # print('mask_weights_all', len(mask_weights_all), len(mask_weights_all[0]))
+
+        return GroupFeatureAttrOutput(expln_scores, {
+            "expln_flat_masks": expln_flat_masks,
             "masks": masks_all,
-            "mask_weights": mask_weights_all,
-        })
+            "mask_weights": mask_weights_all
+        },
+        expln_flat_masks,
+        mask_weights_all)
+
+        #     for e_i, (k, v) in enumerate(sorted(explanation.items(), key=lambda item: item[1], reverse=True)):
+        #         for s_i in k:
+        #             expln_scores[i][s_i] = float(v)
+        #             masks[s_i] = e_i
+        #         mask_weights.append(v)
+
+        #     mask_weights = torch.tensor(mask_weights).to(x.device)
+        #     masks_all.append(masks)
+        #     mask_weights_all.append(mask_weights)
+
+        # return FeatureAttrOutput(expln_scores, {
+        #     "expln_flat_masks": masks_all,
+        #     "masks": masks_all,
+        #     "mask_weights": mask_weights_all,
+        # })
+
+# class ArchipelagoTextCls(FeatureAttrMethod):
+#     """ Text classification with integrated gradients
+#     """
+#     def __init__(self, model, top_k=5):
+#         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+#         model_wrapper = BertWrapperTorch(model, device)
+#         super().__init__(model)
+#         self.model_wrapper = model_wrapper
+#         self.top_k = top_k
+
+#     def forward(self, x, t, **kwargs):
+#         bsz = x.shape[0]
+
+#         if not isinstance(t, torch.Tensor) and t is not None:
+#             t = torch.tensor(t)
+
+#         masks_all = []
+#         mask_weights_all = []
+#         expln_scores = torch.zeros_like(x).float()
+#         for i in range(bsz):
+#             if 'attention_mask' in kwargs:
+#                 text_len = kwargs['attention_mask'][i].sum()
+#                 x_i = x[i][:text_len]
+#                 #for k, v in kwargs.items():
+#                     #print(k, v)
+#                 kwargs_i = {k: v[i][:text_len] for k, v in kwargs.items()}
+#             else:
+#                 x_i = x[i]
+#                 kwargs_i = {k: v[i] for k, v in kwargs.items()}
+#             if t is None:
+#                 predictions = self.model_wrapper(np.expand_dims(x_i,0))
+#                 class_idx = predictions[0].argsort()[::-1][0]
+#             else:
+#                 class_idx = t[i].cpu().item()
+
+#             inputs_np = x_i.cpu().numpy()
+#             baseline = np.zeros_like(inputs_np)
+
+#             xf = TextXformer(inputs_np, baseline)
+#             apgo = Archipelago(self.model_wrapper, data_xformer=xf, output_indices=class_idx, batch_size=20)
+#             explanation = apgo.explain(top_k=self.top_k)
+
+#             mask_weights = []
+#             masks = torch.zeros_like(x_i, dtype=float)
+
+#             for e_i, (k, v) in enumerate(sorted(explanation.items(), key=lambda item: item[1], reverse=True)):
+#                 for s_i in k:
+#                     expln_scores[i][s_i] = float(v)
+#                     masks[s_i] = e_i
+#                 mask_weights.append(v)
+
+#             mask_weights = torch.tensor(mask_weights).to(x.device)
+#             masks_all.append(masks)
+#             mask_weights_all.append(mask_weights)
+
+#         return FeatureAttrOutput(expln_scores, {
+#             "expln_flat_masks": masks_all,
+#             "masks": masks_all,
+#             "mask_weights": mask_weights_all,
+#         })
 
 # class ArchipelagoTextCls(FeatureAttrMethod):
 #     """ Text classification with integrated gradients

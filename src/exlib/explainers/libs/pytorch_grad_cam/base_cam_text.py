@@ -42,7 +42,11 @@ class BaseCAMText(BaseCAM):
                                        activations,
                                        grads)
         # import pdb; pdb.set_trace()
-        if len(activations.shape) == 3:
+        if len(activations.shape) == len(weights.shape):
+            weighted_activations = weights * activations
+        elif len(activations.shape) == 3:
+            print('weights', weights.shape)
+            print('activations', activations.shape)
             weighted_activations = weights[:, :, None, None] * activations
         elif len(activations.shape) == 2:
             weighted_activations = weights[:, None, None] * activations
@@ -52,4 +56,7 @@ class BaseCAMText(BaseCAM):
             cam = get_2d_projection(weighted_activations)
         else:
             cam = weighted_activations.sum(axis=1)
+        # print('cam', cam.shape)
+        # cam = cam[:,:,None]
+        # print('cam', cam.shape)
         return cam
