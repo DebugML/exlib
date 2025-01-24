@@ -80,7 +80,6 @@ def explain_image_cls_with_intgrad(model, x, label,
         x = x.clone().detach().requires_grad_()
         y = model(x)
         loss = y.gather(1, t[:,None])
-        # print('loss', loss.shape)
         loss.sum().backward()
         return x.grad * step_size
 
@@ -96,7 +95,6 @@ def explain_image_cls_with_intgrad(model, x, label,
 
         attr_curr, _ = get_explanations_in_minibatches(xk, label, get_attr_fn, mini_batch_size, 
                 show_pbar=progress_bar, model=model, step_size=step_size)
-        # print('attr_curr', attr_curr.shape)
         intg += attr_curr
 
     attrs = intg
@@ -166,11 +164,9 @@ def explain_text_cls_with_intgrad(model, x, label,
         else:
             y = model(x, **x_kwargs)
         loss = y.gather(1, t[:,None])
-        # print('loss', loss.shape)
         loss.sum().backward()
         return x.grad * step_size
 
-    # intg = torch.zeros_like(x).float()
     intg = torch.zeros(x.size(0), x.size(1), label.size(1), device=x.device, dtype=torch.float)
 
     pbar = tqdm(range(num_steps)) if progress_bar else range(num_steps)
@@ -178,14 +174,12 @@ def explain_text_cls_with_intgrad(model, x, label,
         ak = k * step_size
         
         if mask_combine:
-            mask = ak * torch.ones_like(x[0]).float()
+            mask = ak * torch.ones_like(x).float()
             xk = mask_combine(x, mask).squeeze(1)
             xk.requires_grad_()
-            # y = model(inputs_embeds=xk, **x_kwargs)
         else:
             xk = x0 + ak * (x - x0)
             xk.requires_grad_()
-            # y = model(xk, **x_kwargs)
         
         attr_curr, _ = get_explanations_in_minibatches_text(xk, label, 
                 lambda x, t, x_kwargs, model, step_size: get_attr_fn(x, t, x_kwargs, model, step_size, 
@@ -201,18 +195,17 @@ def explain_text_cls_with_intgrad(model, x, label,
     return FeatureAttrOutput(attrs, {})
 
 class IntGradTextCls(FeatureAttrMethod):
-    """ Image classification with integrated gradients
+    """ Text classification with integrated gradients
     """
     def __init__(self, model, mask_combine='default', projection_layer=None, num_steps=32):
         super().__init__(model)
         if mask_combine == 'default':
-            def mask_combine(inputs, masks):
+            def mask_combine(inputs: torch.LongTensor, masks: torch.FloatTensor):
                 with torch.no_grad():
-                    inputs_embed = projection_layer(inputs)
-                    # import pdb; pdb.set_trace()
-                    mask_embed = projection_layer(torch.tensor([[0]]).int().to(inputs.device))
-                    masked_inputs_embeds = inputs_embed.unsqueeze(1) * masks.unsqueeze(-1) + \
-                            mask_embed.view(1,1,1,-1) * (1 - masks.unsqueeze(-1))
+                    inputs_embed = projection_layer(inputs) # (bsz, l, d)
+                    bsz, l, d = inputs_embed.shape
+                    mask_embed = projection_layer(torch.tensor([[0]]).int().to(inputs.device)) # (1, 1, d)
+                    masked_inputs_embeds = inputs_embed * masks.view(bsz,l,1) + mask_embed.view(1,1,d) * (1 - masks.view(bsz,l,1))
                 return masked_inputs_embeds
         self.mask_combine = mask_combine
         self.num_steps = num_steps

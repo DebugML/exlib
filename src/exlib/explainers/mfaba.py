@@ -21,11 +21,8 @@ class MfabaImageCls(FeatureAttrMethod):
             'norm': mfaba_norm
         }
         mfaba = type_mapping[self.mfaba_type]
-        # import pdb; pdb.set_trace()
         if t.ndim == 1:
             t = t.unsqueeze(1)
-        # print('x', x.size())
-        # print('t', t.size())
         with torch.enable_grad():
 
             def get_attr_fn(x, t, model, **kwargs):
@@ -40,17 +37,6 @@ class MfabaImageCls(FeatureAttrMethod):
                 attrs = attrs.squeeze(-1)
             return FeatureAttrOutput(attrs, {})
 
-            # return FeatureAttrOutput(torch.tensor(mfaba(self.model, x, t, **kwargs)).to(x.device), {})
-
-# class ExtraDimModelWrapper(nn.Module):
-#     def __init__(self, model):
-#         super().__init__()
-#         self.model = model
-        
-#     def forward(self, x_embed):
-#         if x_embed.ndim == 4:
-#             x_embed = x_embed.squeeze(1)
-#         return self.model(inputs_embeds=x_embed)
         
 
 class MfabaTextCls(FeatureAttrMethod):
@@ -71,29 +57,21 @@ class MfabaTextCls(FeatureAttrMethod):
             'norm': mfaba_norm
         }
         mfaba = type_mapping[self.mfaba_type]
-        # import pdb; pdb.set_trace()
         if t.ndim == 1:
             t = t.unsqueeze(1)
-        # print('x', x.size())
-        # print('t', t.size())
         x_embed = self.projection_layer(x)
         with torch.enable_grad():
 
             def get_attr_fn(x_embed, t, x_kwargs, model, **kwargs):
                 x_embed = x_embed.clone().detach().requires_grad_().unsqueeze(1)
-                # print('x_embed', x_embed.shape)
-                
                 mfaba_results = torch.tensor(mfaba(model, x_embed, t, **kwargs), device=x.device)
-                # import pdb; pdb.set_trace()
                 return mfaba_results.squeeze(1)
                 
             attributions_all, _ = get_explanations_in_minibatches_text(x_embed, t, 
                 get_attr_fn, mini_batch_size=16, x_kwargs=x_kwargs,
                 show_pbar=False,
                 model=self.wrapped_model, **self.mfaba_args)
-            
-            # print('attributions_all', attributions_all.shape)
-            
+                        
             attrs = attributions_all
             if attrs.ndim == 3 and attrs.size(-1) == 1:
                 attrs = attrs.squeeze(-1)
