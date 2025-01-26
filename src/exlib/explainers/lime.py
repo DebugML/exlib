@@ -303,6 +303,61 @@ def explain_text_cls_with_lime(model, tokenizer, x, ts,
     # return FeatureAttrOutput(attrs, lime_exp)
 
 
+import torch
+from torch import nn
+
+class WrappedModelMinibatch(nn.Module):
+    def __init__(self, model, batch_size=16):
+        """
+        Wraps a model to handle minibatch processing inside the forward method.
+
+        Args:
+            model (nn.Module): The underlying model to wrap.
+            batch_size (int): The minibatch size for processing.
+        """
+        super().__init__()
+        self.model = model
+        self.batch_size = batch_size
+
+    def forward(self, **kwargs):
+        """
+        Splits the input into minibatches, processes each minibatch, and combines the outputs.
+
+        Args:
+            **kwargs: Keyword arguments containing input tensors.
+
+        Returns:
+            torch.Tensor: Combined output logits from all minibatches.
+        """
+        # Extract the input tensor from kwargs (adjust this to match your model's input structure)
+        input_tensor = kwargs["input_ids"]  # Example input key, modify as needed
+        other_kwargs = {key: value for key, value in kwargs.items() if key != "input_ids"}
+
+        # Prepare to store outputs
+        outputs_list = []
+
+        # Process in minibatches
+        for start_idx in range(0, input_tensor.size(0), self.batch_size):
+            end_idx = start_idx + self.batch_size
+
+            # Slice the minibatch inputs
+            minibatch_input = input_tensor[start_idx:end_idx]
+            minibatch_kwargs = {key: value[start_idx:end_idx] for key, value in other_kwargs.items()}
+
+            # Forward pass for the minibatch
+            minibatch_output = self.model(input_ids=minibatch_input, **minibatch_kwargs)
+            if isinstance(minibatch_output, torch.Tensor):
+                logits = minibatch_output
+            else:
+                logits = minibatch_output.logits
+            outputs_list.append(logits.detach())
+
+        # Concatenate all minibatch outputs
+        combined_outputs = torch.cat(outputs_list, dim=0)
+        return combined_outputs
+
+
+
 class LimeTextCls(FeatureAttrMethod):
     def __init__(self, model, tokenizer,
                  LimeTextExplainerKwargs={},
@@ -311,11 +366,14 @@ class LimeTextCls(FeatureAttrMethod):
                      # this is because the original LIME API is stupid
                      "top_labels" : 1000000,
                      "num_samples" : 500,
-                 }):
+                 },
+                 batch_size=16):
         super().__init__(model)
         self.tokenizer = tokenizer
         self.LimeTextExplainerKwargs = LimeTextExplainerKwargs
         self.explain_instance_kwargs = explain_instance_kwargs
+
+        self.model_minibatch = WrappedModelMinibatch(model, batch_size=batch_size)
 
     def forward(self, x, t, return_groups=False):
         if not isinstance(t, torch.Tensor):
@@ -330,7 +388,7 @@ class LimeTextCls(FeatureAttrMethod):
         attrs, lime_exps = [], []
         for i in range(N):
             xi, ti = x[i], t[i].cpu().tolist()
-            out = explain_text_cls_with_lime(self.model, self.tokenizer, xi, ti,
+            out = explain_text_cls_with_lime(self.model_minibatch, self.tokenizer, xi, ti,
                     LimeTextExplainerKwargs=self.LimeTextExplainerKwargs,
                     explain_instance_kwargs=self.explain_instance_kwargs,
                     return_groups=return_groups)
