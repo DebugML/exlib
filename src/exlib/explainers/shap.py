@@ -62,6 +62,7 @@ class ShapImageSeg(FeatureAttrMethod):
     def forward(self, x, t, **kwargs):
         return explain_image_cls_with_shap(self.cls_model, x, t, self.mask_value, self.shap_explainer_kwargs)
 
+
 def explain_text_cls_with_shap(model, tokenizer, x, t, mask_value, shap_explainer_kwargs, pad_value=0, special_tokens=[]):
     # assert len(x[list(x.keys())[0]]) == len(t)
     assert len(x) == len(t)
@@ -69,13 +70,30 @@ def explain_text_cls_with_shap(model, tokenizer, x, t, mask_value, shap_explaine
 
     input_ids = x
 
+    # inputs_raw = []
+    # for input_ids_i in input_ids:
+    #     input_raw = tokenizer.decode(input_ids_i)
+    #     for st in special_tokens:
+    #         input_raw = input_raw.replace(st, '')
+    #     inputs_raw.append(input_raw)
+
+    # do it a different way. remove special tokens's ids from input_ids
+    # Assuming input_ids is a list of token IDs and special_tokens is a list of special token IDs
     inputs_raw = []
+    special_token_ids = tokenizer.convert_tokens_to_ids(special_tokens)
+
     for input_ids_i in input_ids:
-        input_raw = tokenizer.decode(input_ids_i)
-        for st in special_tokens:
-            input_raw = input_raw.replace(st, '')
+        # Remove special token IDs from the sequence
+        filtered_ids = [token_id for token_id in input_ids_i if token_id not in special_token_ids]
+        # Decode the filtered token IDs back into text
+        input_raw = tokenizer.decode(filtered_ids)
         inputs_raw.append(input_raw)
 
+    # Now inputs_raw contains the decoded strings with special tokens removed
+
+    # input_ids_new = [input_ids_i[~torch.isin(input_ids_i, tokenizer.convert_tokens_to_ids(special_tokens))] for input_ids_i in input_ids]
+    # inputs_raw = [tokenizer.decode(input_ids_i) for input_ids_i in input_ids_new]
+    # import pdb; pdb.set_trace()
 
     # inputs_raw = [tokenizer.decode(input_ids_i) for input_ids_i in input_ids]
 
@@ -164,7 +182,7 @@ class ShapTextCls(FeatureAttrMethod):
                                           x, t, self.mask_value, self.shap_explainer_kwargs, self.pad_value, self.special_tokens)
 
 """
-Usage: (attention: special tokens are different for BERT and Roberta)
+Usage: (attention: special tokens and pad_value are different for BERT and Roberta)
 
 BERT:
 from transformers import BertTokenizer, BertForSequenceClassification
